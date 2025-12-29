@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react';
-import { Application, Container } from 'pixi.js';
+import { Application, Container, Rectangle } from 'pixi.js';
 import { createFarmScene, TILE_SIZE } from './scenes/FarmScene';
 import { Player } from './Player';
 import { FarmSystem } from './FarmSystem';
+import { GameUI } from './UI';
 
 const MAP_SIZE = 16;
-const SCALE = 3;
+const SIDE_PANEL_WIDTH = 150; // 左右侧边栏宽度
 
 export function Game() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -16,20 +17,51 @@ export function Game() {
 
     const initGame = async () => {
       const app = new Application();
+      const mapBaseSize = MAP_SIZE * TILE_SIZE;
+      
+      // 计算响应式缩放（地图高度铺满屏幕）
+      const calcScale = () => window.innerHeight / mapBaseSize;
+      
+      // 计算侧边栏宽度
+      const calcSideWidth = () => {
+        const scale = calcScale();
+        const mapPixelWidth = mapBaseSize * scale;
+        return (window.innerWidth - mapPixelWidth) / 2;
+      };
+      
+      let scale = calcScale();
       
       await app.init({
-        width: MAP_SIZE * TILE_SIZE * SCALE,
-        height: MAP_SIZE * TILE_SIZE * SCALE,
+        width: window.innerWidth,
+        height: window.innerHeight,
         backgroundColor: 0x1a1a2e,
+        resizeTo: window,
       });
 
       appRef.current = app;
       containerRef.current?.appendChild(app.canvas);
 
-      // 游戏容器（用于统一缩放）
+      // UI（左右侧边栏）
+      const sideWidth = calcSideWidth();
+      const ui = new GameUI(sideWidth, sideWidth, window.innerHeight);
+      app.stage.addChild(ui);
+
+      // 游戏容器（地图居中，高度铺满）
       const gameContainer = new Container();
-      gameContainer.scale.set(SCALE);
+      const updateLayout = () => {
+        scale = calcScale();
+        const mapPixelSize = mapBaseSize * scale;
+        const newSideWidth = calcSideWidth();
+        gameContainer.x = newSideWidth;
+        gameContainer.y = 0;
+        gameContainer.scale.set(scale);
+        ui.setRightPanelX(newSideWidth + mapPixelSize);
+      };
+      updateLayout();
       app.stage.addChild(gameContainer);
+      
+      // 窗口大小改变时响应式调整
+      window.addEventListener('resize', updateLayout);
 
       // 加载农场场景
       const farmScene = await createFarmScene();
@@ -42,15 +74,17 @@ export function Game() {
 
       // 添加玩家
       const player = new Player();
+      await player.loadTextures();
       player.setTileMap(farmScene); // 设置地图用于碰撞检测
       gameContainer.addChild(player);
 
-      // 鼠标点击事件
-      app.stage.eventMode = 'static';
-      app.stage.hitArea = app.screen;
-      app.stage.on('pointerdown', (e) => {
-        const x = e.global.x / SCALE;
-        const y = e.global.y / SCALE;
+      // 鼠标点击事件（只在地图区域）
+      gameContainer.eventMode = 'static';
+      gameContainer.hitArea = new Rectangle(0, 0, MAP_SIZE * TILE_SIZE, MAP_SIZE * TILE_SIZE);
+      gameContainer.on('pointerdown', (e) => {
+        const currentScale = gameContainer.scale.x;
+        const x = (e.global.x - gameContainer.x) / currentScale;
+        const y = (e.global.y - gameContainer.y) / currentScale;
         
         // 右键收获
         if (e.button === 2) {

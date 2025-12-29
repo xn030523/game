@@ -1,28 +1,41 @@
-import { Container, Graphics } from 'pixi.js';
+import { Container, Sprite, Texture, Assets } from 'pixi.js';
 import { TILE_SIZE, TileMap } from './TileMap';
 
+const PLAYER_SIZE = 32; // 显示大小
+const PLAYER_COLOR = 'green'; // 可选: green, pink, yellow, purple, beige
+
 export class Player extends Container {
-  private speed: number = 3;
+  private speed: number = 1;
   private targetX: number = 0;
   private targetY: number = 0;
   private isMoving: boolean = false;
   private tileMap: TileMap | null = null;
+  private sprite: Sprite | null = null;
+  private textures: { idle: Texture; walkA: Texture; walkB: Texture } | null = null;
+  private walkFrame: number = 0;
+  private walkTimer: number = 0;
 
   constructor() {
     super();
     
-    // 用彩色方块代替人物（后续可换成贴图）
-    const body = new Graphics();
-    body.fill(0x4a90d9);
-    body.roundRect(2, 2, TILE_SIZE - 4, TILE_SIZE - 4, 3);
-    body.fill();
-    this.addChild(body);
-
     // 初始位置（地图中间）
     this.x = 8 * TILE_SIZE;
     this.y = 8 * TILE_SIZE;
     this.targetX = this.x;
     this.targetY = this.y;
+  }
+
+  async loadTextures(): Promise<void> {
+    const idle = await Assets.load(`/characters/character_${PLAYER_COLOR}_idle.png`);
+    const walkA = await Assets.load(`/characters/character_${PLAYER_COLOR}_walk_a.png`);
+    const walkB = await Assets.load(`/characters/character_${PLAYER_COLOR}_walk_b.png`);
+    
+    this.textures = { idle, walkA, walkB };
+    
+    this.sprite = new Sprite(idle);
+    this.sprite.anchor.set(0.5, 1); // 底部中心为锚点
+    this.sprite.scale.set(PLAYER_SIZE / 128); // 缩放到合适大小
+    this.addChild(this.sprite);
   }
 
   setTileMap(tileMap: TileMap): void {
@@ -46,11 +59,31 @@ export class Player extends Container {
   }
 
   update(): void {
-    if (!this.isMoving) return;
+    if (!this.sprite || !this.textures) return;
+
+    if (!this.isMoving) {
+      this.sprite.texture = this.textures.idle;
+      return;
+    }
 
     const dx = this.targetX - this.x;
     const dy = this.targetY - this.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
+
+    // 行走动画
+    this.walkTimer++;
+    if (this.walkTimer >= 10) {
+      this.walkTimer = 0;
+      this.walkFrame = 1 - this.walkFrame;
+      this.sprite.texture = this.walkFrame === 0 ? this.textures.walkA : this.textures.walkB;
+    }
+
+    // 面向方向
+    if (dx < 0) {
+      this.sprite.scale.x = -PLAYER_SIZE / 128;
+    } else if (dx > 0) {
+      this.sprite.scale.x = PLAYER_SIZE / 128;
+    }
 
     if (distance < this.speed) {
       this.x = this.targetX;
