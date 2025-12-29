@@ -17,10 +17,17 @@ interface TiledMap {
   layers: TiledLayer[];
 }
 
+// 不可通行的瓷砖ID（房子等）
+const BLOCKED_TILES = new Set([
+  49, 50, 51, 52, 61, 62, 63, 64, 73, 74, 86, 76,  // 房子1
+  53, 54, 55, 56, 65, 66, 67, 68, 77, 78, 90, 80,  // 房子2
+]);
+
 export class TileMap extends Container {
   private tileTextures: Map<number, Texture> = new Map();
   private mapWidth: number = 0;
   private mapHeight: number = 0;
+  private collisionMap: number[] = [];
 
   async loadFromTiled(jsonPath: string): Promise<void> {
     const response = await fetch(jsonPath);
@@ -47,8 +54,44 @@ export class TileMap extends Container {
       }
     }
 
-    // 渲染图层
+    // 保存碰撞数据并渲染图层
+    this.buildCollisionMap(mapData.layers);
     this.renderLayers(mapData.layers);
+  }
+
+  private buildCollisionMap(layers: TiledLayer[]): void {
+    // 反转顺序：底层先，上层后（上层覆盖底层）
+    const reversed = [...layers].reverse();
+    for (const layer of reversed) {
+      if (layer.layers) {
+        this.buildCollisionMap(layer.layers);
+      } else if (layer.data) {
+        // 合并所有图层的碰撞数据
+        if (this.collisionMap.length === 0) {
+          this.collisionMap = [...layer.data];
+        } else {
+          for (let i = 0; i < layer.data.length; i++) {
+            if (layer.data[i] !== 0) {
+              this.collisionMap[i] = layer.data[i];
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 检查某个像素位置是否可通行
+  isWalkable(x: number, y: number): boolean {
+    const tileX = Math.floor(x / TILE_SIZE);
+    const tileY = Math.floor(y / TILE_SIZE);
+    
+    if (tileX < 0 || tileX >= this.mapWidth || tileY < 0 || tileY >= this.mapHeight) {
+      return false;
+    }
+    
+    const index = tileY * this.mapWidth + tileX;
+    const tileId = this.collisionMap[index];
+    return !BLOCKED_TILES.has(tileId);
   }
 
   private collectTileIds(layers: TiledLayer[], ids: Set<number>): void {
@@ -96,5 +139,13 @@ export class TileMap extends Container {
 
   getHeight(): number {
     return this.mapHeight * TILE_SIZE;
+  }
+
+  getCollisionMap(): number[] {
+    return this.collisionMap;
+  }
+
+  getMapWidth(): number {
+    return this.mapWidth;
   }
 }

@@ -1,0 +1,14 @@
+{ "columns":24,
+ "image":"..\/..\/..\/..\/..\/..\/Downloads\/kenney_pico-8-city\/Tilemap\/tilemap_packed.png",
+ "imageheight":120,
+ "imagewidth":192,
+ "margin":0,
+ "name":"tilemap_packed",
+ "spacing":0,
+ "tilecount":360,
+ "tiledversion":"1.11.2",
+ "tileheight":8,
+ "tilewidth":8,
+ "type":"tileset",
+ "version":"1.10"
+}
