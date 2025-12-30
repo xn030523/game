@@ -73,6 +73,7 @@ type UserInventory struct {
 	UserID    uint      `json:"user_id" gorm:"not null;index"`
 	ItemType  string    `json:"item_type" gorm:"type:enum('seed','crop','tool','material');not null"`
 	ItemID    uint      `json:"item_id" gorm:"not null"`
+	ItemName  string    `json:"item_name" gorm:"-"`
 	Quantity  int       `json:"quantity" gorm:"default:0"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

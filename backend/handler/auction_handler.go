@@ -20,14 +20,10 @@ func NewAuctionHandler() *AuctionHandler {
 
 // GetAuctions 获取拍卖列表
 func (h *AuctionHandler) GetAuctions(c *gin.Context) {
-	itemType := c.Query("item_type")
-	pageStr := c.DefaultQuery("page", "1")
-	pageSizeStr := c.DefaultQuery("page_size", "20")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 
-	page, _ := strconv.Atoi(pageStr)
-	pageSize, _ := strconv.Atoi(pageSizeStr)
-
-	auctions, total, err := h.auctionService.GetActiveAuctions(itemType, page, pageSize)
+	auctions, total, err := h.auctionService.GetActiveAuctions(page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -37,22 +33,18 @@ func (h *AuctionHandler) GetAuctions(c *gin.Context) {
 		"auctions": auctions,
 		"total":    total,
 		"page":     page,
-		"pageSize": pageSize,
 	})
 }
 
-// GetAuction 获取拍卖详情
-func (h *AuctionHandler) GetAuction(c *gin.Context) {
-	idStr := c.Param("id")
-	id, _ := strconv.ParseUint(idStr, 10, 32)
+// GetAuctionDetail 获取拍卖详情
+func (h *AuctionHandler) GetAuctionDetail(c *gin.Context) {
+	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 
-	auction, err := h.auctionService.GetAuctionByID(uint(id))
+	auction, bids, err := h.auctionService.GetAuctionDetail(uint(id))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "拍卖不存在"})
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-
-	bids, _ := h.auctionService.GetAuctionBids(uint(id))
 
 	c.JSON(http.StatusOK, gin.H{
 		"auction": auction,
@@ -60,9 +52,10 @@ func (h *AuctionHandler) GetAuction(c *gin.Context) {
 	})
 }
 
-// CreateAuction 创建拍卖
+// CreateAuction 上架拍卖
 func (h *AuctionHandler) CreateAuction(c *gin.Context) {
-	userID, _ := c.Get("userID")
+	uid, _ := c.Get("userID")
+	userID := uid.(uint)
 
 	var req struct {
 		ItemType    string   `json:"item_type" binding:"required"`
@@ -70,7 +63,7 @@ func (h *AuctionHandler) CreateAuction(c *gin.Context) {
 		Quantity    int      `json:"quantity" binding:"required,min=1"`
 		StartPrice  float64  `json:"start_price" binding:"required,min=1"`
 		BuyoutPrice *float64 `json:"buyout_price"`
-		Duration    int      `json:"duration" binding:"required,min=1,max=72"` // 小时
+		Duration    int      `json:"duration" binding:"required,min=1,max=72"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -79,7 +72,7 @@ func (h *AuctionHandler) CreateAuction(c *gin.Context) {
 	}
 
 	auction, err := h.auctionService.CreateAuction(
-		userID.(uint), req.ItemType, req.ItemID, req.Quantity,
+		userID, req.ItemType, req.ItemID, req.Quantity,
 		req.StartPrice, req.BuyoutPrice, req.Duration,
 	)
 	if err != nil {
@@ -87,14 +80,17 @@ func (h *AuctionHandler) CreateAuction(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "创建成功", "auction": auction})
+	c.JSON(http.StatusOK, gin.H{
+		"message": "上架成功",
+		"auction": auction,
+	})
 }
 
 // PlaceBid 出价
 func (h *AuctionHandler) PlaceBid(c *gin.Context) {
-	userID, _ := c.Get("userID")
-	idStr := c.Param("id")
-	id, _ := strconv.ParseUint(idStr, 10, 32)
+	uid, _ := c.Get("userID")
+	userID := uid.(uint)
+	auctionID, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 
 	var req struct {
 		BidPrice float64 `json:"bid_price" binding:"required,min=1"`
@@ -105,8 +101,7 @@ func (h *AuctionHandler) PlaceBid(c *gin.Context) {
 		return
 	}
 
-	err := h.auctionService.PlaceBid(userID.(uint), uint(id), req.BidPrice)
-	if err != nil {
+	if err := h.auctionService.PlaceBid(userID, uint(auctionID), req.BidPrice); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -116,12 +111,11 @@ func (h *AuctionHandler) PlaceBid(c *gin.Context) {
 
 // Buyout 一口价购买
 func (h *AuctionHandler) Buyout(c *gin.Context) {
-	userID, _ := c.Get("userID")
-	idStr := c.Param("id")
-	id, _ := strconv.ParseUint(idStr, 10, 32)
+	uid, _ := c.Get("userID")
+	userID := uid.(uint)
+	auctionID, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 
-	err := h.auctionService.Buyout(userID.(uint), uint(id))
-	if err != nil {
+	if err := h.auctionService.Buyout(userID, uint(auctionID)); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -131,12 +125,11 @@ func (h *AuctionHandler) Buyout(c *gin.Context) {
 
 // CancelAuction 取消拍卖
 func (h *AuctionHandler) CancelAuction(c *gin.Context) {
-	userID, _ := c.Get("userID")
-	idStr := c.Param("id")
-	id, _ := strconv.ParseUint(idStr, 10, 32)
+	uid, _ := c.Get("userID")
+	userID := uid.(uint)
+	auctionID, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 
-	err := h.auctionService.CancelAuction(userID.(uint), uint(id))
-	if err != nil {
+	if err := h.auctionService.CancelAuction(userID, uint(auctionID)); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -146,27 +139,17 @@ func (h *AuctionHandler) CancelAuction(c *gin.Context) {
 
 // GetMyAuctions 获取我的拍卖
 func (h *AuctionHandler) GetMyAuctions(c *gin.Context) {
-	userID, _ := c.Get("userID")
-	status := c.Query("status")
+	uid, _ := c.Get("userID")
+	userID := uid.(uint)
 
-	auctions, err := h.auctionService.GetUserAuctions(userID.(uint), status)
+	selling, bidding, err := h.auctionService.GetMyAuctions(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"auctions": auctions})
-}
-
-// GetMyBids 获取我参与的拍卖
-func (h *AuctionHandler) GetMyBids(c *gin.Context) {
-	userID, _ := c.Get("userID")
-
-	auctions, err := h.auctionService.GetUserBidAuctions(userID.(uint))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"auctions": auctions})
+	c.JSON(http.StatusOK, gin.H{
+		"selling": selling,
+		"bidding": bidding,
+	})
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"farm-game/models"
 	"farm-game/repository"
+	"farm-game/ws"
 	"time"
 )
 
@@ -22,26 +23,47 @@ func NewAuctionService() *AuctionService {
 }
 
 // GetActiveAuctions 获取进行中的拍卖
-func (s *AuctionService) GetActiveAuctions(itemType string, page, pageSize int) ([]models.Auction, int64, error) {
-	return s.auctionRepo.GetActiveAuctions(itemType, page, pageSize)
+func (s *AuctionService) GetActiveAuctions(page, pageSize int) ([]models.Auction, int64, error) {
+	auctions, total, err := s.auctionRepo.GetActiveAuctions(page, pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 填充物品名称
+	for i := range auctions {
+		auctions[i].ItemName = s.getItemName(auctions[i].ItemType, auctions[i].ItemID)
+	}
+
+	return auctions, total, nil
 }
 
-// GetAuctionByID 获取拍卖详情
-func (s *AuctionService) GetAuctionByID(id uint) (*models.Auction, error) {
-	return s.auctionRepo.GetAuctionByID(id)
+// GetAuctionDetail 获取拍卖详情
+func (s *AuctionService) GetAuctionDetail(id uint) (*models.Auction, []models.AuctionBid, error) {
+	auction, err := s.auctionRepo.GetAuctionByID(id)
+	if err != nil {
+		return nil, nil, errors.New("拍卖不存在")
+	}
+
+	auction.ItemName = s.getItemName(auction.ItemType, auction.ItemID)
+	bids, _ := s.auctionRepo.GetAuctionBids(id)
+
+	return auction, bids, nil
 }
 
-// GetAuctionBids 获取出价记录
-func (s *AuctionService) GetAuctionBids(auctionID uint) ([]models.AuctionBid, error) {
-	return s.auctionRepo.GetAuctionBids(auctionID)
-}
-
-// CreateAuction 创建拍卖
+// CreateAuction 上架拍卖
 func (s *AuctionService) CreateAuction(userID uint, itemType string, itemID uint, quantity int, startPrice float64, buyoutPrice *float64, duration int) (*models.Auction, error) {
-	// 检查仓库是否有物品
+	// 检查物品数量
 	item, err := s.farmRepo.GetUserInventoryItem(userID, itemType, itemID)
 	if err != nil || item.Quantity < quantity {
 		return nil, errors.New("物品数量不足")
+	}
+
+	// 验证价格
+	if startPrice <= 0 {
+		return nil, errors.New("起拍价必须大于0")
+	}
+	if buyoutPrice != nil && *buyoutPrice <= startPrice {
+		return nil, errors.New("一口价必须大于起拍价")
 	}
 
 	// 扣除物品
@@ -49,6 +71,7 @@ func (s *AuctionService) CreateAuction(userID uint, itemType string, itemID uint
 		return nil, err
 	}
 
+	// 创建拍卖
 	now := time.Now()
 	auction := &models.Auction{
 		SellerID:     userID,
@@ -56,11 +79,11 @@ func (s *AuctionService) CreateAuction(userID uint, itemType string, itemID uint
 		ItemID:       itemID,
 		Quantity:     quantity,
 		StartPrice:   startPrice,
-		CurrentPrice: startPrice,
 		BuyoutPrice:  buyoutPrice,
-		Status:       "active",
+		CurrentPrice: startPrice,
 		StartAt:      now,
 		EndAt:        now.Add(time.Duration(duration) * time.Hour),
+		Status:       "active",
 	}
 
 	if err := s.auctionRepo.CreateAuction(auction); err != nil {
@@ -69,11 +92,12 @@ func (s *AuctionService) CreateAuction(userID uint, itemType string, itemID uint
 		return nil, err
 	}
 
+	auction.ItemName = s.getItemName(itemType, itemID)
 	return auction, nil
 }
 
 // PlaceBid 出价
-func (s *AuctionService) PlaceBid(userID, auctionID uint, bidPrice float64) error {
+func (s *AuctionService) PlaceBid(userID uint, auctionID uint, bidPrice float64) error {
 	auction, err := s.auctionRepo.GetAuctionByID(auctionID)
 	if err != nil {
 		return errors.New("拍卖不存在")
@@ -82,26 +106,25 @@ func (s *AuctionService) PlaceBid(userID, auctionID uint, bidPrice float64) erro
 	if auction.Status != "active" {
 		return errors.New("拍卖已结束")
 	}
-
 	if time.Now().After(auction.EndAt) {
 		return errors.New("拍卖已过期")
 	}
-
 	if auction.SellerID == userID {
 		return errors.New("不能竞拍自己的物品")
 	}
-
 	if bidPrice <= auction.CurrentPrice {
 		return errors.New("出价必须高于当前价格")
 	}
 
-	user, err := s.userRepo.FindByID(userID)
-	if err != nil {
-		return errors.New("用户不存在")
-	}
-
+	// 检查金币
+	user, _ := s.userRepo.FindByID(userID)
 	if user.Gold < bidPrice {
 		return errors.New("金币不足")
+	}
+
+	// 冻结金币
+	if err := s.userRepo.UpdateGold(userID, -bidPrice); err != nil {
+		return err
 	}
 
 	// 退还上一个出价者的金币
@@ -109,29 +132,40 @@ func (s *AuctionService) PlaceBid(userID, auctionID uint, bidPrice float64) erro
 		s.userRepo.UpdateGold(*auction.HighestBidder, auction.CurrentPrice)
 	}
 
-	// 扣除当前出价者金币
-	if err := s.userRepo.UpdateGold(userID, -bidPrice); err != nil {
-		return err
-	}
-
 	// 更新拍卖
 	auction.CurrentPrice = bidPrice
 	auction.HighestBidder = &userID
 	auction.BidCount++
+
+	// 如果剩余时间少于5分钟，延长5分钟
+	remaining := time.Until(auction.EndAt)
+	if remaining < 5*time.Minute {
+		auction.EndAt = time.Now().Add(5 * time.Minute)
+	}
+
+	if err := s.auctionRepo.UpdateAuction(auction); err != nil {
+		// 回滚金币
+		s.userRepo.UpdateGold(userID, bidPrice)
+		return err
+	}
 
 	// 记录出价
 	bid := &models.AuctionBid{
 		AuctionID: auctionID,
 		UserID:    userID,
 		BidPrice:  bidPrice,
+		CreatedAt: time.Now(),
 	}
 	s.auctionRepo.CreateBid(bid)
 
-	return s.auctionRepo.UpdateAuction(auction)
+	// WebSocket 通知
+	s.broadcastAuctionUpdate(auction)
+
+	return nil
 }
 
 // Buyout 一口价购买
-func (s *AuctionService) Buyout(userID, auctionID uint) error {
+func (s *AuctionService) Buyout(userID uint, auctionID uint) error {
 	auction, err := s.auctionRepo.GetAuctionByID(auctionID)
 	if err != nil {
 		return errors.New("拍卖不存在")
@@ -140,104 +174,148 @@ func (s *AuctionService) Buyout(userID, auctionID uint) error {
 	if auction.Status != "active" {
 		return errors.New("拍卖已结束")
 	}
-
 	if auction.BuyoutPrice == nil {
-		return errors.New("该拍卖不支持一口价")
+		return errors.New("此拍卖不支持一口价")
 	}
-
 	if auction.SellerID == userID {
 		return errors.New("不能购买自己的物品")
 	}
 
-	user, err := s.userRepo.FindByID(userID)
-	if err != nil {
-		return errors.New("用户不存在")
-	}
+	buyoutPrice := *auction.BuyoutPrice
 
-	if user.Gold < *auction.BuyoutPrice {
+	// 检查金币
+	user, _ := s.userRepo.FindByID(userID)
+	if user.Gold < buyoutPrice {
 		return errors.New("金币不足")
 	}
 
-	// 退还上一个出价者的金币
+	// 扣除金币
+	if err := s.userRepo.UpdateGold(userID, -buyoutPrice); err != nil {
+		return err
+	}
+
+	// 退还之前出价者的金币
 	if auction.HighestBidder != nil {
 		s.userRepo.UpdateGold(*auction.HighestBidder, auction.CurrentPrice)
 	}
 
-	// 扣除买家金币
-	if err := s.userRepo.UpdateGold(userID, -*auction.BuyoutPrice); err != nil {
-		return err
-	}
-
-	// 给卖家金币
-	s.userRepo.UpdateGold(auction.SellerID, *auction.BuyoutPrice)
+	// 给卖家金币（扣5%手续费）
+	sellerEarning := buyoutPrice * 0.95
+	s.userRepo.UpdateGold(auction.SellerID, sellerEarning)
 
 	// 给买家物品
 	s.farmRepo.AddToInventory(userID, auction.ItemType, auction.ItemID, auction.Quantity)
 
 	// 更新拍卖状态
 	auction.Status = "sold"
-	auction.CurrentPrice = *auction.BuyoutPrice
+	auction.CurrentPrice = buyoutPrice
 	auction.HighestBidder = &userID
+	s.auctionRepo.UpdateAuction(auction)
 
-	return s.auctionRepo.UpdateAuction(auction)
+	// WebSocket 通知
+	s.broadcastAuctionUpdate(auction)
+
+	return nil
 }
 
-// CancelAuction 取消拍卖
-func (s *AuctionService) CancelAuction(userID, auctionID uint) error {
+// CancelAuction 取消拍卖（无人出价时）
+func (s *AuctionService) CancelAuction(userID uint, auctionID uint) error {
 	auction, err := s.auctionRepo.GetAuctionByID(auctionID)
 	if err != nil {
 		return errors.New("拍卖不存在")
 	}
 
 	if auction.SellerID != userID {
-		return errors.New("无权操作")
+		return errors.New("只能取消自己的拍卖")
 	}
-
 	if auction.Status != "active" {
 		return errors.New("拍卖已结束")
 	}
-
 	if auction.BidCount > 0 {
-		return errors.New("已有出价，无法取消")
+		return errors.New("已有人出价，无法取消")
 	}
 
-	// 返还物品
+	// 退还物品
 	s.farmRepo.AddToInventory(userID, auction.ItemType, auction.ItemID, auction.Quantity)
 
+	// 更新状态
 	auction.Status = "cancelled"
-	return s.auctionRepo.UpdateAuction(auction)
-}
-
-// ProcessExpiredAuctions 处理过期拍卖
-func (s *AuctionService) ProcessExpiredAuctions() error {
-	auctions, err := s.auctionRepo.GetExpiredAuctions()
-	if err != nil {
-		return err
-	}
-
-	for _, auction := range auctions {
-		if auction.HighestBidder != nil {
-			// 有人出价，成交
-			s.userRepo.UpdateGold(auction.SellerID, auction.CurrentPrice)
-			s.farmRepo.AddToInventory(*auction.HighestBidder, auction.ItemType, auction.ItemID, auction.Quantity)
-			auction.Status = "sold"
-		} else {
-			// 无人出价，流拍
-			s.farmRepo.AddToInventory(auction.SellerID, auction.ItemType, auction.ItemID, auction.Quantity)
-			auction.Status = "expired"
-		}
-		s.auctionRepo.UpdateAuction(&auction)
-	}
+	s.auctionRepo.UpdateAuction(auction)
 
 	return nil
 }
 
-// GetUserAuctions 获取用户的拍卖
-func (s *AuctionService) GetUserAuctions(userID uint, status string) ([]models.Auction, error) {
-	return s.auctionRepo.GetUserAuctions(userID, status)
+// GetMyAuctions 获取我的拍卖
+func (s *AuctionService) GetMyAuctions(userID uint) ([]models.Auction, []models.Auction, error) {
+	selling, err := s.auctionRepo.GetUserAuctions(userID)
+	if err != nil {
+		return nil, nil, err
+	}
+	for i := range selling {
+		selling[i].ItemName = s.getItemName(selling[i].ItemType, selling[i].ItemID)
+	}
+
+	bidding, err := s.auctionRepo.GetUserBids(userID)
+	if err != nil {
+		return nil, nil, err
+	}
+	for i := range bidding {
+		bidding[i].ItemName = s.getItemName(bidding[i].ItemType, bidding[i].ItemID)
+	}
+
+	return selling, bidding, nil
 }
 
-// GetUserBidAuctions 获取用户参与的拍卖
-func (s *AuctionService) GetUserBidAuctions(userID uint) ([]models.Auction, error) {
-	return s.auctionRepo.GetUserBidAuctions(userID)
+// ProcessExpiredAuctions 处理过期拍卖（定时任务调用）
+func (s *AuctionService) ProcessExpiredAuctions() {
+	auctions, _ := s.auctionRepo.GetExpiredAuctions()
+
+	for _, auction := range auctions {
+		if auction.BidCount > 0 && auction.HighestBidder != nil {
+			// 有人出价，成交
+			// 给卖家金币（扣5%手续费）
+			sellerEarning := auction.CurrentPrice * 0.95
+			s.userRepo.UpdateGold(auction.SellerID, sellerEarning)
+
+			// 给买家物品
+			s.farmRepo.AddToInventory(*auction.HighestBidder, auction.ItemType, auction.ItemID, auction.Quantity)
+
+			auction.Status = "sold"
+		} else {
+			// 无人出价，流拍
+			// 退还物品给卖家
+			s.farmRepo.AddToInventory(auction.SellerID, auction.ItemType, auction.ItemID, auction.Quantity)
+
+			auction.Status = "expired"
+		}
+
+		s.auctionRepo.UpdateAuction(&auction)
+	}
+}
+
+// getItemName 获取物品名称
+func (s *AuctionService) getItemName(itemType string, itemID uint) string {
+	if itemType == "seed" {
+		seed, err := s.farmRepo.GetSeedByID(itemID)
+		if err == nil {
+			return seed.Name
+		}
+	} else if itemType == "crop" {
+		crop, err := s.farmRepo.GetCropByID(itemID)
+		if err == nil {
+			return crop.Name
+		}
+	}
+	return "未知物品"
+}
+
+// broadcastAuctionUpdate WebSocket广播拍卖更新
+func (s *AuctionService) broadcastAuctionUpdate(auction *models.Auction) {
+	ws.GameHub.Broadcast(ws.NewMessage("auction_update", map[string]interface{}{
+		"auction_id":    auction.ID,
+		"current_price": auction.CurrentPrice,
+		"bid_count":     auction.BidCount,
+		"status":        auction.Status,
+		"end_at":        auction.EndAt,
+	}))
 }

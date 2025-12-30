@@ -274,11 +274,53 @@ func (s *AchievementService) Checkin(userID uint) (int, error) {
 	user.Contribution++
 	s.userRepo.Update(user)
 
-	// 更新成就进度
-	s.UpdateAchievementProgress(userID, "login_days", 1)
-	s.UpdateAchievementProgress(userID, "consecutive_days", 0) // 特殊处理
+	// 检查登录成就
+	s.checkLoginAchievements(userID, stats.LoginDays, stats.ConsecutiveDays)
 
 	return reward, nil
+}
+
+// checkLoginAchievements 检查登录相关成就
+func (s *AchievementService) checkLoginAchievements(userID uint, loginDays, consecutiveDays int) {
+	configs := []struct {
+		code  string
+		ctype string
+		count int
+	}{
+		{"consecutive_days_7", "consecutive", 7},
+		{"consecutive_days_30", "consecutive", 30},
+		{"login_days_365", "login", 365},
+	}
+
+	for _, c := range configs {
+		var currentValue int
+		if c.ctype == "consecutive" {
+			currentValue = consecutiveDays
+		} else {
+			currentValue = loginDays
+		}
+
+		if currentValue >= c.count {
+			ua, _ := s.achievementRepo.GetUserAchievement(userID, c.code)
+			if ua == nil {
+				achievement, _ := s.achievementRepo.GetAchievementByCode(c.code)
+				if achievement != nil {
+					s.achievementRepo.UnlockAchievement(userID, achievement.ID)
+					// 增加成就点数
+					user, _ := s.userRepo.FindByID(userID)
+					if user != nil {
+						user.AchievementPoints += achievement.Points
+						s.userRepo.Update(user)
+					}
+					stats, _ := s.userRepo.GetUserStats(userID)
+					if stats != nil {
+						stats.AchievementPoints += achievement.Points
+						s.userRepo.UpdateUserStats(stats)
+					}
+				}
+			}
+		}
+	}
 }
 
 // GetMonthCheckins 获取本月签到记录

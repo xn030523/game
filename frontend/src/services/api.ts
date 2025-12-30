@@ -213,6 +213,14 @@ class ApiService {
     return this.request<{ message: string }>(`/auction/${auctionId}/buyout`, { method: 'POST' })
   }
 
+  async cancelAuction(auctionId: number) {
+    return this.request<{ message: string }>(`/auction/${auctionId}/cancel`, { method: 'POST' })
+  }
+
+  async getMyAuctions() {
+    return this.request<{ selling: Auction[]; bidding: Auction[] }>('/auction/my')
+  }
+
   // === 黑市 ===
   async getBlackmarket() {
     return this.request<{ batch: unknown; items: BlackmarketItem[]; next_refresh: string }>('/blackmarket')

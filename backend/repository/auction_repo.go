@@ -17,50 +17,25 @@ func NewAuctionRepository() *AuctionRepository {
 }
 
 // GetActiveAuctions 获取进行中的拍卖
-func (r *AuctionRepository) GetActiveAuctions(itemType string, page, pageSize int) ([]models.Auction, int64, error) {
+func (r *AuctionRepository) GetActiveAuctions(page, pageSize int) ([]models.Auction, int64, error) {
 	var auctions []models.Auction
 	var total int64
 
-	query := r.db.Model(&models.Auction{}).Where("status = 'active' AND end_at > ?", time.Now())
-	if itemType != "" {
-		query = query.Where("item_type = ?", itemType)
-	}
-
+	query := r.db.Model(&models.Auction{}).Where("status = ? AND end_at > ?", "active", time.Now())
 	query.Count(&total)
-	err := query.Preload("Seller").
-		Order("end_at ASC").
-		Offset((page - 1) * pageSize).Limit(pageSize).
-		Find(&auctions).Error
+
+	offset := (page - 1) * pageSize
+	err := query.Preload("Seller").Preload("Bidder").
+		Order("end_at ASC").Offset(offset).Limit(pageSize).Find(&auctions).Error
 
 	return auctions, total, err
 }
 
-// GetAuctionByID 根据ID获取拍卖
+// GetAuctionByID 获取拍卖详情
 func (r *AuctionRepository) GetAuctionByID(id uint) (*models.Auction, error) {
 	var auction models.Auction
-	err := r.db.Preload("Seller").Preload("HighestBidderUser").First(&auction, id).Error
-	if err != nil {
-		return nil, err
-	}
-	return &auction, nil
-}
-
-// GetUserAuctions 获取用户的拍卖
-func (r *AuctionRepository) GetUserAuctions(userID uint, status string) ([]models.Auction, error) {
-	var auctions []models.Auction
-	query := r.db.Where("seller_id = ?", userID)
-	if status != "" {
-		query = query.Where("status = ?", status)
-	}
-	err := query.Order("created_at DESC").Find(&auctions).Error
-	return auctions, err
-}
-
-// GetUserBidAuctions 获取用户参与竞拍的拍卖
-func (r *AuctionRepository) GetUserBidAuctions(userID uint) ([]models.Auction, error) {
-	var auctions []models.Auction
-	err := r.db.Where("highest_bidder = ? AND status = 'active'", userID).Find(&auctions).Error
-	return auctions, err
+	err := r.db.Preload("Seller").Preload("Bidder").First(&auction, id).Error
+	return &auction, err
 }
 
 // CreateAuction 创建拍卖
@@ -71,6 +46,22 @@ func (r *AuctionRepository) CreateAuction(auction *models.Auction) error {
 // UpdateAuction 更新拍卖
 func (r *AuctionRepository) UpdateAuction(auction *models.Auction) error {
 	return r.db.Save(auction).Error
+}
+
+// GetUserAuctions 获取用户的拍卖（卖家）
+func (r *AuctionRepository) GetUserAuctions(userID uint) ([]models.Auction, error) {
+	var auctions []models.Auction
+	err := r.db.Where("seller_id = ?", userID).
+		Preload("Bidder").Order("created_at DESC").Find(&auctions).Error
+	return auctions, err
+}
+
+// GetUserBids 获取用户参与的竞拍
+func (r *AuctionRepository) GetUserBids(userID uint) ([]models.Auction, error) {
+	var auctions []models.Auction
+	err := r.db.Where("highest_bidder = ? AND status = ?", userID, "active").
+		Preload("Seller").Order("end_at ASC").Find(&auctions).Error
+	return auctions, err
 }
 
 // CreateBid 创建出价记录
@@ -86,9 +77,22 @@ func (r *AuctionRepository) GetAuctionBids(auctionID uint) ([]models.AuctionBid,
 	return bids, err
 }
 
-// GetExpiredAuctions 获取已过期的拍卖
+// GetExpiredAuctions 获取已过期但未处理的拍卖
 func (r *AuctionRepository) GetExpiredAuctions() ([]models.Auction, error) {
 	var auctions []models.Auction
-	err := r.db.Where("status = 'active' AND end_at <= ?", time.Now()).Find(&auctions).Error
+	err := r.db.Where("status = ? AND end_at <= ?", "active", time.Now()).Find(&auctions).Error
+	return auctions, err
+}
+
+// SearchAuctions 搜索拍卖
+func (r *AuctionRepository) SearchAuctions(itemType string, keyword string) ([]models.Auction, error) {
+	var auctions []models.Auction
+	query := r.db.Where("status = ? AND end_at > ?", "active", time.Now())
+	
+	if itemType != "" {
+		query = query.Where("item_type = ?", itemType)
+	}
+	
+	err := query.Preload("Seller").Order("end_at ASC").Find(&auctions).Error
 	return auctions, err
 }

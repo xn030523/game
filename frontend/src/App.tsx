@@ -7,6 +7,7 @@ import Chat from './components/Chat'
 import Warehouse from './components/Warehouse'
 import Market from './components/Market'
 import StockExchange from './components/StockExchange'
+import Auction from './pages/Auction'
 import Login from './components/Login'
 
 export type ModalType = 'warehouse' | 'market' | 'auction' | 'stock' | 'charity' | 'ranking' | 'blackmarket' | null
@@ -32,6 +33,14 @@ function GameContent() {
       <Warehouse isOpen={activeModal === 'warehouse'} onClose={() => setActiveModal(null)} />
       <Market isOpen={activeModal === 'market'} onClose={() => setActiveModal(null)} />
       <StockExchange isOpen={activeModal === 'stock'} onClose={() => setActiveModal(null)} />
+      {activeModal === 'auction' && (
+        <div className="modal-overlay" onClick={() => setActiveModal(null)}>
+          <div className="modal-content large" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setActiveModal(null)}>×</button>
+            <Auction />
+          </div>
+        </div>
+      )}
     </>
   )
 }

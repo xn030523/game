@@ -191,7 +191,22 @@ func (s *FarmService) BuySeed(userID uint, seedID uint, quantity int) error {
 	s.broadcastPriceUpdate("seed", seedID)
 
 	// 添加到仓库
-	return s.farmRepo.AddToInventory(userID, "seed", seedID, quantity)
+	if err := s.farmRepo.AddToInventory(userID, "seed", seedID, quantity); err != nil {
+		return err
+	}
+
+	// 更新用户统计
+	stats, _ := s.userRepo.GetUserStats(userID)
+	if stats != nil {
+		stats.TotalBought += quantity
+		stats.TotalGoldSpent += totalCost
+		s.userRepo.UpdateUserStats(stats)
+	}
+
+	// 检查成就
+	s.checkAchievements(userID, "buy")
+	s.userService.AutoLevelUp(userID)
+	return nil
 }
 
 // broadcastPriceUpdate 广播价格更新
@@ -264,7 +279,14 @@ func (s *FarmService) Plant(userID uint, slotIndex int, seedID uint) error {
 		s.userRepo.UpdateUserStats(stats)
 	}
 
-	return s.farmRepo.UpdateUserFarm(farm)
+	if err := s.farmRepo.UpdateUserFarm(farm); err != nil {
+		return err
+	}
+
+	// 检查种植成就
+	s.checkAchievements(userID, "plant")
+	s.userService.AutoLevelUp(userID)
+	return nil
 }
 
 // Harvest 收获
@@ -332,7 +354,7 @@ func (s *FarmService) Harvest(userID uint, slotIndex int) (*HarvestResult, error
 	}
 
 	// 检查成就
-	s.checkHarvestAchievements(userID, stats)
+	s.checkAchievements(userID, "harvest")
 
 	// 自动升级
 	s.userService.AutoLevelUp(userID)
@@ -408,6 +430,11 @@ func (s *FarmService) SellCrop(userID uint, cropID uint, quantity int) (float64,
 	// WebSocket 广播价格更新
 	s.broadcastPriceUpdate("crop", cropID)
 
+	// 检查成就
+	s.checkAchievements(userID, "sell")
+	s.checkAchievements(userID, "gold")
+	s.userService.AutoLevelUp(userID)
+
 	return totalEarning, nil
 }
 
@@ -443,41 +470,75 @@ func (s *FarmService) RecycleSeed(userID uint, seedID uint, quantity int) (float
 
 // GetUserInventory 获取用户仓库
 func (s *FarmService) GetUserInventory(userID uint) ([]models.UserInventory, error) {
-	return s.farmRepo.GetUserInventory(userID)
+	items, err := s.farmRepo.GetUserInventory(userID)
+	if err != nil {
+		return nil, err
+	}
+	// 填充物品名称
+	for i := range items {
+		if items[i].ItemType == "seed" {
+			seed, _ := s.farmRepo.GetSeedByID(items[i].ItemID)
+			if seed != nil {
+				items[i].ItemName = seed.Name
+			}
+		} else if items[i].ItemType == "crop" {
+			crop, _ := s.farmRepo.GetCropByID(items[i].ItemID)
+			if crop != nil {
+				items[i].ItemName = crop.Name
+			}
+		}
+	}
+	return items, nil
 }
 
-// checkHarvestAchievements 检查收获相关成就
-func (s *FarmService) checkHarvestAchievements(userID uint, stats *models.UserStats) {
+// checkAchievements 通用成就检查
+func (s *FarmService) checkAchievements(userID uint, achievementType string) {
+	stats, _ := s.userRepo.GetUserStats(userID)
 	if stats == nil {
 		return
 	}
-	
 	achievementRepo := repository.NewAchievementRepository()
-	
-	// 检查收获次数成就
-	harvestAchievements := []struct {
+
+	// 成就配置
+	configs := map[string][]struct {
 		code  string
 		count int
 	}{
-		{"first_harvest", 1},
-		{"harvest_10", 10},
-		{"harvest_100", 100},
-		{"harvest_1000", 1000},
+		"harvest": {{"first_harvest", 1}, {"harvest_10", 10}, {"harvest_100", 100}, {"harvest_1000", 1000}},
+		"plant":   {{"total_planted_1", 1}, {"total_planted_50", 50}, {"total_planted_500", 500}},
+		"sell":    {{"total_sold_1", 1}, {"total_sold_50", 50}, {"total_sold_1000", 1000}},
+		"buy":     {{"total_bought_100", 100}},
+		"gold":    {{"total_gold_earned_10000", 10000}, {"total_gold_earned_100000", 100000}, {"total_gold_earned_1000000", 1000000}},
 	}
-	
-	for _, a := range harvestAchievements {
-		if stats.TotalHarvested >= a.count {
-			// 检查是否已获得
+
+	achievements, ok := configs[achievementType]
+	if !ok {
+		return
+	}
+
+	var currentValue int
+	switch achievementType {
+	case "harvest":
+		currentValue = stats.TotalHarvested
+	case "plant":
+		currentValue = stats.TotalPlanted
+	case "sell":
+		currentValue = stats.TotalSold
+	case "buy":
+		currentValue = stats.TotalBought
+	case "gold":
+		currentValue = int(stats.TotalGoldEarned)
+	}
+
+	for _, a := range achievements {
+		if currentValue >= a.count {
 			ua, _ := achievementRepo.GetUserAchievement(userID, a.code)
 			if ua == nil {
-				// 未获得，尝试解锁
 				achievement, _ := achievementRepo.GetAchievementByCode(a.code)
 				if achievement != nil {
 					achievementRepo.UnlockAchievement(userID, achievement.ID)
-					// 增加成就点数
 					stats.AchievementPoints += achievement.Points
 					s.userRepo.UpdateUserStats(stats)
-					// 同步更新用户表
 					user, _ := s.userRepo.FindByID(userID)
 					if user != nil {
 						user.AchievementPoints += achievement.Points

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/joho/godotenv"
 	_ "github.com/go-sql-driver/mysql"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -28,11 +29,16 @@ type Config struct {
 var AppConfig *Config
 
 func Load() {
+	// 加载 .env 文件
+	if err := godotenv.Load(); err != nil {
+		log.Println("未找到 .env 文件，使用环境变量或默认值")
+	}
+
 	AppConfig = &Config{
 		DBHost:     getEnv("DB_HOST", "127.0.0.1"),
 		DBPort:     getEnv("DB_PORT", "3306"),
 		DBUser:     getEnv("DB_USER", "root"),
-		DBPassword: getEnv("DB_PASSWORD", "19813889852"),
+		DBPassword: getEnv("DB_PASSWORD", ""),
 		DBName:     getEnv("DB_NAME", "farm_game"),
 		JWTSecret:  getEnv("JWT_SECRET", "farm-game-secret-key"),
 		ServerPort: getEnv("SERVER_PORT", "8080"),
@@ -90,19 +96,13 @@ func initTables() {
 	DB.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = ? AND table_name = 'users'", AppConfig.DBName).Scan(&count)
 
 	if count == 0 {
-		log.Println("检测到数据库为空，开始初始化表结构...")
+		log.Println("检测到数据库为空，开始初始化...")
 		
-		// 执行 schema.sql
-		if err := execSQLFile("sql/schema.sql"); err != nil {
-			log.Fatal("执行 schema.sql 失败:", err)
+		// 执行完整 SQL 文件
+		if err := execSQLFile("sql/farm_game_full.sql"); err != nil {
+			log.Fatal("执行 farm_game_full.sql 失败:", err)
 		}
-		log.Println("表结构创建完成")
-
-		// 执行 data.sql
-		if err := execSQLFile("sql/data.sql"); err != nil {
-			log.Fatal("执行 data.sql 失败:", err)
-		}
-		log.Println("初始数据导入完成")
+		log.Println("数据库初始化完成")
 	} else {
 		log.Println("数据库表已存在，跳过初始化")
 	}

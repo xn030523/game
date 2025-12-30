@@ -73,6 +73,7 @@ export interface InventoryItem {
   id: number
   item_type: 'seed' | 'crop' | 'tool' | 'material'
   item_id: number
+  item_name?: string
   quantity: number
 }
 
@@ -114,15 +115,19 @@ export interface LeveragePosition {
 export interface Auction {
   id: number
   seller_id: number
+  seller?: { nickname: string }
   item_type: string
   item_id: number
+  item_name?: string
   quantity: number
   start_price: number
   current_price: number
   buyout_price: number | null
   highest_bidder: number | null
+  bidder?: { nickname: string }
   bid_count: number
   status: 'active' | 'sold' | 'expired' | 'cancelled'
+  start_at: string
   end_at: string
 }
 
