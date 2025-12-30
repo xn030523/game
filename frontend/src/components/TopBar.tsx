@@ -1,7 +1,8 @@
-import { useState } from 'react'
 import './TopBar.css'
+import { useUser } from '../contexts/UserContext'
+import type { ModalType } from '../App'
 
-const menuItems = [
+const menuItems: { id: ModalType; name: string; icon: string }[] = [
   { id: 'warehouse', name: '仓库', icon: '📦' },
   { id: 'market', name: '交易市场', icon: '🏪' },
   { id: 'auction', name: '拍卖会', icon: '🔨' },
@@ -11,8 +12,12 @@ const menuItems = [
   { id: 'blackmarket', name: '黑市商人', icon: '🎭' },
 ]
 
-export default function TopBar() {
-  const [active, setActive] = useState<string | null>(null)
+interface TopBarProps {
+  onMenuClick: (modal: ModalType) => void
+}
+
+export default function TopBar({ onMenuClick }: TopBarProps) {
+  const { user } = useUser()
 
   return (
     <div className="topbar-container">
@@ -23,8 +28,8 @@ export default function TopBar() {
         {menuItems.map(item => (
           <button
             key={item.id}
-            className={`topbar-btn ${active === item.id ? 'active' : ''}`}
-            onClick={() => setActive(active === item.id ? null : item.id)}
+            className="topbar-btn"
+            onClick={() => onMenuClick(item.id)}
           >
             <span>{item.icon}</span>
             <span className="btn-text">{item.name}</span>
@@ -33,11 +38,11 @@ export default function TopBar() {
       </div>
       <div className="topbar-right">
         <div className="topbar-user">
-          <img src="/characters/character_green_idle.png" className="topbar-avatar" />
-          <span>农场主</span>
+          <img src={user?.avatar || '/characters/character_green_idle.png'} className="topbar-avatar" />
+          <span>{user?.nickname || '游客'}</span>
         </div>
-        <span className="topbar-info">⭐ Lv.1</span>
-        <span className="topbar-coin">💰 1000</span>
+        <span className="topbar-info">⭐ Lv.{user?.level || 1}</span>
+        <span className="topbar-coin">💰 {user?.gold?.toFixed(0) || 0}</span>
       </div>
     </div>
   )

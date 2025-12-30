@@ -1,0 +1,109 @@
+import { useState, useEffect } from 'react'
+import Modal from './Modal'
+import { useUser } from '../contexts/UserContext'
+import { api } from '../services/api'
+import type { Seed } from '../types'
+
+interface WarehouseProps {
+  isOpen: boolean
+  onClose: () => void
+}
+
+export default function Warehouse({ isOpen, onClose }: WarehouseProps) {
+  const { inventory, refreshInventory } = useUser()
+  const [tab, setTab] = useState<'seed' | 'crop'>('seed')
+  const [seeds, setSeeds] = useState<Seed[]>([])
+  const [selling, setSelling] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (isOpen) {
+      api.getSeeds().then(data => setSeeds(data.seeds))
+    }
+  }, [isOpen])
+
+  const seedItems = inventory.filter(i => i.item_type === 'seed')
+  const cropItems = inventory.filter(i => i.item_type === 'crop')
+
+  const getSeedInfo = (seedId: number) => seeds.find(s => s.id === seedId)
+
+  const handleSell = async (cropId: number, quantity: number) => {
+    setSelling(cropId)
+    try {
+      const result = await api.sellCrop(cropId, quantity)
+      alert(`出售成功！获得 ${result.earning} 金币`)
+      refreshInventory()
+    } catch (e) {
+      alert((e as Error).message)
+    } finally {
+      setSelling(null)
+    }
+  }
+
+  return (
+    <Modal title="仓库" isOpen={isOpen} onClose={onClose}>
+      <div className="tabs">
+        <button className={`tab ${tab === 'seed' ? 'active' : ''}`} onClick={() => setTab('seed')}>
+          种子 ({seedItems.reduce((sum, i) => sum + i.quantity, 0)})
+        </button>
+        <button className={`tab ${tab === 'crop' ? 'active' : ''}`} onClick={() => setTab('crop')}>
+          作物 ({cropItems.reduce((sum, i) => sum + i.quantity, 0)})
+        </button>
+      </div>
+
+      {tab === 'seed' && (
+        <div className="grid grid-3">
+          {seedItems.length === 0 ? (
+            <p style={{ gridColumn: '1/-1', textAlign: 'center', color: '#888' }}>暂无种子</p>
+          ) : (
+            seedItems.map(item => {
+              const seed = getSeedInfo(item.item_id)
+              return (
+                <div key={item.id} className="card">
+                  <div className="card-header">
+                    {seed?.icon && (
+                      <img 
+                        src={`${seed.icon}/0.png`} 
+                        alt={seed.name}
+                        style={{ width: 32, height: 32, imageRendering: 'pixelated', marginRight: 8 }}
+                      />
+                    )}
+                    <span style={{ flex: 1 }}>{seed?.name || `种子#${item.item_id}`}</span>
+                    <span style={{ color: '#ffd700' }}>×{item.quantity}</span>
+                  </div>
+                  <p style={{ fontSize: '0.85rem', color: '#aaa', margin: 0 }}>
+                    {seed?.description || ''}
+                  </p>
+                </div>
+              )
+            })
+          )}
+        </div>
+      )}
+
+      {tab === 'crop' && (
+        <div className="grid grid-3">
+          {cropItems.length === 0 ? (
+            <p style={{ gridColumn: '1/-1', textAlign: 'center', color: '#888' }}>暂无作物</p>
+          ) : (
+            cropItems.map(item => (
+              <div key={item.id} className="card">
+                <div className="card-header">
+                  <span>作物#{item.item_id}</span>
+                  <span style={{ color: '#ffd700' }}>×{item.quantity}</span>
+                </div>
+                <button
+                  className="btn btn-primary"
+                  style={{ width: '100%', marginTop: 8 }}
+                  disabled={selling === item.item_id}
+                  onClick={() => handleSell(item.item_id, item.quantity)}
+                >
+                  {selling === item.item_id ? '出售中...' : '全部出售'}
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </Modal>
+  )
+}
