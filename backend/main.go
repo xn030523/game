@@ -1,17 +1,15 @@
 package main
 
 import (
-	"farm-game/controllers"
-	"farm-game/database"
-	"farm-game/middleware"
+	"farm-game/ws"
 	"log"
 
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
-	// 初始化数据库
-	database.Init()
+	// 初始化 WebSocket Hub
+	ws.Init()
 
 	r := gin.Default()
 
@@ -27,19 +25,26 @@ func main() {
 		c.Next()
 	})
 
-	// 公开路由
-	auth := r.Group("/api/auth")
-	{
-		auth.GET("/linuxdo", controllers.GetLinuxDoAuthURL)
-		auth.GET("/linuxdo/callback", controllers.LinuxDoCallback)
-	}
+	// WebSocket 路由
+	r.GET("/ws", func(c *gin.Context) {
+		// 从查询参数获取用户ID（生产环境应该从 JWT 验证）
+		userID := c.Query("user_id")
+		if userID == "" {
+			userID = "anonymous"
+		}
+		ws.ServeWs(ws.GameHub, c.Writer, c.Request, userID)
+	})
 
-	// 需要登录的路由
+	// API 路由
 	api := r.Group("/api")
-	api.Use(middleware.AuthRequired())
 	{
-		api.GET("/user", controllers.GetCurrentUser)
-		api.POST("/user/bind-new", controllers.BindNewPlatform)
+		// 获取在线人数
+		api.GET("/online", func(c *gin.Context) {
+			c.JSON(200, gin.H{
+				"count": ws.GameHub.GetOnlineCount(),
+				"users": ws.GameHub.GetOnlineUsers(),
+			})
+		})
 	}
 
 	log.Println("服务器启动在 :8080")
