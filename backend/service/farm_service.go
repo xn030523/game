@@ -10,16 +10,18 @@ import (
 )
 
 type FarmService struct {
-	farmRepo   *repository.FarmRepository
-	userRepo   *repository.UserRepository
-	marketRepo *repository.MarketRepository
+	farmRepo    *repository.FarmRepository
+	userRepo    *repository.UserRepository
+	marketRepo  *repository.MarketRepository
+	userService *UserService
 }
 
 func NewFarmService() *FarmService {
 	return &FarmService{
-		farmRepo:   repository.NewFarmRepository(),
-		userRepo:   repository.NewUserRepository(),
-		marketRepo: repository.NewMarketRepository(),
+		farmRepo:    repository.NewFarmRepository(),
+		userRepo:    repository.NewUserRepository(),
+		marketRepo:  repository.NewMarketRepository(),
+		userService: NewUserService(),
 	}
 }
 
@@ -331,6 +333,9 @@ func (s *FarmService) Harvest(userID uint, slotIndex int) (*HarvestResult, error
 
 	// 检查成就
 	s.checkHarvestAchievements(userID, stats)
+
+	// 自动升级
+	s.userService.AutoLevelUp(userID)
 
 	return &HarvestResult{
 		CropID:      crop.ID,

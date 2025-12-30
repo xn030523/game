@@ -135,6 +135,27 @@ func (s *UserService) LevelUp(userID uint) error {
 	return s.userRepo.Update(user)
 }
 
+// AutoLevelUp 自动升级（循环检查直到不能升级）
+func (s *UserService) AutoLevelUp(userID uint) (int, error) {
+	levelsGained := 0
+	for {
+		canLevelUp, _ := s.CheckLevelUp(userID)
+		if !canLevelUp {
+			break
+		}
+		user, _ := s.userRepo.FindByID(userID)
+		nextLevelConfig, _ := s.userRepo.GetLevelConfig(user.Level + 1)
+		if nextLevelConfig == nil {
+			break
+		}
+		user.Level++
+		user.Gold += float64(nextLevelConfig.RewardGold)
+		s.userRepo.Update(user)
+		levelsGained++
+	}
+	return levelsGained, nil
+}
+
 // GetFarmSlotPrice 计算扩展农田价格
 func (s *UserService) GetFarmSlotPrice(slotIndex int) int {
 	if slotIndex <= 4 {
