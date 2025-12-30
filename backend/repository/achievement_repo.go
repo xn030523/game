@@ -44,12 +44,12 @@ func (r *AchievementRepository) GetAchievementsByCategory(category string) ([]mo
 
 // GetAchievementByCode 根据code获取成就
 func (r *AchievementRepository) GetAchievementByCode(code string) (*models.Achievement, error) {
-	var achievement models.Achievement
-	err := r.db.Where("code = ?", code).First(&achievement).Error
-	if err != nil {
-		return nil, err
+	var achievements []models.Achievement
+	r.db.Where("code = ?", code).Limit(1).Find(&achievements)
+	if len(achievements) == 0 {
+		return nil, nil
 	}
-	return &achievement, nil
+	return &achievements[0], nil
 }
 
 // === 用户成就 ===
@@ -63,14 +63,14 @@ func (r *AchievementRepository) GetUserAchievements(userID uint) ([]models.UserA
 
 // GetUserAchievement 获取用户指定成就
 func (r *AchievementRepository) GetUserAchievement(userID uint, code string) (*models.UserAchievement, error) {
-	var ua models.UserAchievement
-	err := r.db.Joins("JOIN achievements ON achievements.id = user_achievements.achievement_id").
+	var uas []models.UserAchievement
+	r.db.Joins("JOIN achievements ON achievements.id = user_achievements.achievement_id").
 		Where("user_achievements.user_id = ? AND achievements.code = ?", userID, code).
-		Preload("Achievement").First(&ua).Error
-	if err != nil {
-		return nil, err
+		Preload("Achievement").Limit(1).Find(&uas)
+	if len(uas) == 0 {
+		return nil, nil
 	}
-	return &ua, nil
+	return &uas[0], nil
 }
 
 // GetUserAchievementByID 获取用户指定成就(通过ID)

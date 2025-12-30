@@ -32,6 +32,11 @@ export interface Seed {
   description: string
   icon: string
   base_price: number
+  current_price: number
+  price_change: number   // 涨跌幅 %
+  buy_volume: number     // 24h买入量
+  sell_volume: number    // 24h卖出量
+  trend: string          // up/down/stable
   growth_time: number
   stages: number
   unlock_level: number
@@ -43,6 +48,11 @@ export interface Crop {
   name: string
   icon: string
   base_sell_price: number
+  current_price: number
+  price_change: number
+  buy_volume: number
+  sell_volume: number
+  trend: string
   yield_min: number
   yield_max: number
 }

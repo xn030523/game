@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './TopBar.css'
 import { useUser } from '../contexts/UserContext'
+import { useToast } from './Toast'
+import { api } from '../services/api'
 import type { ModalType } from '../App'
 
 const menuItems: { id: ModalType; name: string; icon: string }[] = [
@@ -18,14 +20,44 @@ interface TopBarProps {
 }
 
 export default function TopBar({ onMenuClick }: TopBarProps) {
-  const { user, stats } = useUser()
+  const { user, stats, refreshProfile } = useUser()
+  const { showToast } = useToast()
   const [showProfile, setShowProfile] = useState(false)
+  const [checkinLoading, setCheckinLoading] = useState(false)
+  const [todayChecked, setTodayChecked] = useState(false)
+
+  // 检查今日是否已签到
+  useEffect(() => {
+    api.getMonthCheckins().then(data => {
+      const today = new Date().getDate()
+      const checkins = data.checkins as Array<{ day_of_month: number }>
+      const checked = checkins?.some(c => c.day_of_month === today)
+      setTodayChecked(!!checked)
+    }).catch(() => {})
+  }, [])
+
+  const handleCheckin = async () => {
+    if (checkinLoading || todayChecked) return
+    setCheckinLoading(true)
+    try {
+      const result = await api.checkin()
+      showToast(`签到成功！奖励 ${result.reward} 金币`, 'success')
+      setTodayChecked(true)
+      refreshProfile()
+    } catch (e) {
+      const msg = (e as Error).message
+      if (msg.includes('已签到')) {
+        setTodayChecked(true)
+      }
+      showToast(msg, 'error')
+    } finally {
+      setCheckinLoading(false)
+    }
+  }
 
   return (
     <div className="topbar-container">
-      <div className="topbar-left">
-        <span className="topbar-logo">🌾 农场游戏</span>
-      </div>
+      <span className="topbar-logo">🌾农场游戏</span>
       <div className="topbar-menu">
         {menuItems.map(item => (
           <button
@@ -66,6 +98,13 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
                 <div className="profile-row"><span>连续登录:</span><span>{stats.consecutive_days}天</span></div>
               </>
             )}
+            <button 
+              className={`profile-checkin ${todayChecked ? 'checked' : ''}`}
+              onClick={handleCheckin}
+              disabled={checkinLoading || todayChecked}
+            >
+              {checkinLoading ? '签到中...' : todayChecked ? '✅ 今日已签到' : '📅 每日签到'}
+            </button>
             <button className="profile-close" onClick={() => setShowProfile(false)}>关闭</button>
           </div>
         </div>

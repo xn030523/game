@@ -15,6 +15,7 @@ type Seed struct {
 	Stages      int     `json:"stages" gorm:"default:5"`
 	Season      string  `json:"season"`
 	UnlockLevel int     `json:"unlock_level" gorm:"default:1"`
+	Rarity      int     `json:"rarity" gorm:"default:1"` // 1普通 2良好 3稀有 4史诗 5传说
 	IsActive    bool    `json:"is_active" gorm:"default:true"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`

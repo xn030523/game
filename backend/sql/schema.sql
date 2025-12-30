@@ -68,6 +68,7 @@ CREATE TABLE seeds (
     stages INT DEFAULT 5 COMMENT '生长阶段数',
     season VARCHAR(20) COMMENT '适合季节(spring/summer/autumn/winter/all)',
     unlock_level INT DEFAULT 1 COMMENT '解锁等级',
+    rarity INT DEFAULT 1 COMMENT '稀有度(1普通80%,2良好50%,3稀有30%,4史诗15%,5传说10%)',
     is_active TINYINT(1) DEFAULT 1 COMMENT '是否上架',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP

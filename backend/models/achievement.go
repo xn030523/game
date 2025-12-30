@@ -80,7 +80,7 @@ type Ranking struct {
 	RankType     string    `json:"rank_type" gorm:"type:enum('gold','level','contribution','achievement','harvest','trade');not null"`
 	UserID       uint      `json:"user_id" gorm:"not null"`
 	RankPosition int       `json:"rank_position" gorm:"not null"`
-	Score        int64     `json:"score" gorm:"not null"`
+	Score        float64   `json:"score" gorm:"type:decimal(20,2);not null"`
 	UpdatedAt    time.Time `json:"updated_at"`
 
 	User User `json:"user" gorm:"foreignKey:UserID"`

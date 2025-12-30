@@ -49,12 +49,6 @@ func Stop() {
 
 // registerTasks 注册所有定时任务
 func registerTasks() {
-	// 市场价格更新 - 每5分钟
-	scheduler.Register("market_price_update", 5*time.Minute, UpdateMarketPrices)
-
-	// 股票价格波动 - 每1分钟
-	scheduler.Register("stock_price_update", 1*time.Minute, UpdateStockPrices)
-
 	// 黑市刷新 - 每4小时
 	scheduler.Register("blackmarket_refresh", 4*time.Hour, RefreshBlackmarket)
 

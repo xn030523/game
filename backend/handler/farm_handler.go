@@ -19,7 +19,7 @@ func NewFarmHandler() *FarmHandler {
 	}
 }
 
-// GetSeeds 获取可购买的种子列表
+// GetSeeds 获取可购买的种子列表（含实时价格）
 func (h *FarmHandler) GetSeeds(c *gin.Context) {
 	userID, _ := c.Get("userID")
 	user, err := h.userService.GetUserByID(userID.(uint))
@@ -28,13 +28,23 @@ func (h *FarmHandler) GetSeeds(c *gin.Context) {
 		return
 	}
 
-	seeds, err := h.farmService.GetSeeds(user.Level)
+	seeds, err := h.farmService.GetSeedsWithPrice(user.Level)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"seeds": seeds})
+}
+
+// GetCrops 获取作物列表（含实时价格）
+func (h *FarmHandler) GetCrops(c *gin.Context) {
+	crops, err := h.farmService.GetCropsWithPrice()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"crops": crops})
 }
 
 // GetFarms 获取用户农田
@@ -78,7 +88,7 @@ func (h *FarmHandler) Plant(c *gin.Context) {
 	userID, _ := c.Get("userID")
 	
 	var req struct {
-		SlotIndex int  `json:"slot_index" binding:"required,min=0"`
+		SlotIndex int  `json:"slot_index" binding:"min=0"`
 		SeedID    uint `json:"seed_id" binding:"required"`
 	}
 
@@ -101,7 +111,7 @@ func (h *FarmHandler) Harvest(c *gin.Context) {
 	userID, _ := c.Get("userID")
 	
 	var req struct {
-		SlotIndex int `json:"slot_index" binding:"required,min=0"`
+		SlotIndex int `json:"slot_index" binding:"min=0"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {

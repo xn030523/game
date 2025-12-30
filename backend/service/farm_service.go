@@ -4,6 +4,7 @@ import (
 	"errors"
 	"farm-game/models"
 	"farm-game/repository"
+	"farm-game/ws"
 	"math/rand"
 	"time"
 )
@@ -25,6 +26,77 @@ func NewFarmService() *FarmService {
 // GetSeeds 获取用户可购买的种子列表
 func (s *FarmService) GetSeeds(userLevel int) ([]models.Seed, error) {
 	return s.farmRepo.GetSeedsByLevel(userLevel)
+}
+
+// SeedWithPrice 带实时价格的种子
+type SeedWithPrice struct {
+	models.Seed
+	CurrentPrice  float64 `json:"current_price"`
+	PriceChange   float64 `json:"price_change"`   // 涨跌幅 %
+	BuyVolume     int64   `json:"buy_volume"`     // 24h买入量
+	SellVolume    int64   `json:"sell_volume"`    // 24h卖出量
+	Trend         string  `json:"trend"`          // up/down/stable
+}
+
+// GetSeedsWithPrice 获取种子列表（含实时价格）
+func (s *FarmService) GetSeedsWithPrice(userLevel int) ([]SeedWithPrice, error) {
+	seeds, err := s.farmRepo.GetSeedsByLevel(userLevel)
+	if err != nil {
+		return nil, err
+	}
+	
+	result := make([]SeedWithPrice, len(seeds))
+	for i, seed := range seeds {
+		result[i].Seed = seed
+		// 获取市场价格
+		status, err := s.marketRepo.GetMarketStatus("seed", seed.ID)
+		if err != nil {
+			result[i].CurrentPrice = seed.BasePrice
+			result[i].PriceChange = 0
+			result[i].Trend = "stable"
+		} else {
+			result[i].CurrentPrice = status.CurrentPrice
+			result[i].PriceChange = (status.CurrentPrice - seed.BasePrice) / seed.BasePrice * 100
+			result[i].BuyVolume = status.BuyVolume24h
+			result[i].SellVolume = status.SellVolume24h
+			result[i].Trend = status.Trend
+		}
+	}
+	return result, nil
+}
+
+// CropWithPrice 带实时价格的作物
+type CropWithPrice struct {
+	models.Crop
+	CurrentPrice float64 `json:"current_price"`
+	PriceChange  float64 `json:"price_change"`
+	BuyVolume    int64   `json:"buy_volume"`
+	SellVolume   int64   `json:"sell_volume"`
+	Trend        string  `json:"trend"`
+}
+
+// GetCropsWithPrice 获取作物列表（含实时价格）
+func (s *FarmService) GetCropsWithPrice() ([]CropWithPrice, error) {
+	crops, err := s.farmRepo.GetAllCrops()
+	if err != nil {
+		return nil, err
+	}
+	result := make([]CropWithPrice, len(crops))
+	for i, crop := range crops {
+		result[i].Crop = crop
+		status, err := s.marketRepo.GetMarketStatus("crop", crop.ID)
+		if err != nil {
+			result[i].CurrentPrice = crop.BaseSellPrice
+			result[i].Trend = "stable"
+		} else {
+			result[i].CurrentPrice = status.CurrentPrice
+			result[i].PriceChange = (status.CurrentPrice - crop.BaseSellPrice) / crop.BaseSellPrice * 100
+			result[i].BuyVolume = status.BuyVolume24h
+			result[i].SellVolume = status.SellVolume24h
+			result[i].Trend = status.Trend
+		}
+	}
+	return result, nil
 }
 
 // GetUserFarms 获取用户农田
@@ -85,14 +157,22 @@ func (s *FarmService) BuySeed(userID uint, seedID uint, quantity int) error {
 
 	// 获取当前市场价格
 	marketStatus, err := s.marketRepo.GetMarketStatus("seed", seedID)
-	var price float64
+	var currentPrice float64
 	if err != nil {
-		price = seed.BasePrice
+		currentPrice = seed.BasePrice
 	} else {
-		price = marketStatus.CurrentPrice
+		currentPrice = marketStatus.CurrentPrice
 	}
 
-	totalCost := price * float64(quantity)
+	// 计算带滑点的总成本（每10个涨1%）
+	totalCost := 0.0
+	tempPrice := currentPrice
+	for i := 0; i < quantity; i++ {
+		totalCost += tempPrice
+		// 每买1个，价格涨0.1%
+		tempPrice *= 1.001
+	}
+
 	if user.Gold < totalCost {
 		return errors.New("金币不足")
 	}
@@ -102,8 +182,30 @@ func (s *FarmService) BuySeed(userID uint, seedID uint, quantity int) error {
 		return err
 	}
 
+	// 更新市场交易量（买入增加需求，价格上涨）
+	s.marketRepo.UpdateBuyVolume("seed", seedID, quantity)
+
+	// WebSocket 广播价格更新
+	s.broadcastPriceUpdate("seed", seedID)
+
 	// 添加到仓库
 	return s.farmRepo.AddToInventory(userID, "seed", seedID, quantity)
+}
+
+// broadcastPriceUpdate 广播价格更新
+func (s *FarmService) broadcastPriceUpdate(itemType string, itemID uint) {
+	status, err := s.marketRepo.GetMarketStatus(itemType, itemID)
+	if err != nil {
+		return
+	}
+	ws.GameHub.Broadcast(ws.NewMessage(ws.MsgTypeMarketUpdate, map[string]interface{}{
+		"item_type":     itemType,
+		"item_id":       itemID,
+		"current_price": status.CurrentPrice,
+		"buy_volume":    status.BuyVolume24h,
+		"sell_volume":   status.SellVolume24h,
+		"trend":         status.Trend,
+	}))
 }
 
 // Plant 种植
@@ -180,12 +282,26 @@ func (s *FarmService) Harvest(userID uint, slotIndex int) (*HarvestResult, error
 		return nil, errors.New("作物不存在")
 	}
 
-	// 计算产量
-	yield := crop.YieldMin + rand.Intn(crop.YieldMax-crop.YieldMin+1)
+	// 固定产量1个
+	yield := 1
 
 	// 添加作物到仓库
 	if err := s.farmRepo.AddToInventory(userID, "crop", crop.ID, yield); err != nil {
 		return nil, err
+	}
+
+	// 根据稀有度计算种子掉落概率
+	// 1普通=80%, 2良好=50%, 3稀有=30%, 4史诗=15%, 5传说=10%
+	seed, _ := s.farmRepo.GetSeedByID(*farm.SeedID)
+	dropRates := map[int]int{1: 80, 2: 50, 3: 30, 4: 15, 5: 10}
+	dropRate := dropRates[seed.Rarity]
+	if dropRate == 0 {
+		dropRate = 80
+	}
+	seedDropped := 0
+	if rand.Intn(100) < dropRate {
+		seedDropped = 1
+		s.farmRepo.AddToInventory(userID, "seed", *farm.SeedID, 1)
 	}
 
 	// 清空农田
@@ -217,16 +333,20 @@ func (s *FarmService) Harvest(userID uint, slotIndex int) (*HarvestResult, error
 	s.checkHarvestAchievements(userID, stats)
 
 	return &HarvestResult{
-		CropID:   crop.ID,
-		CropName: crop.Name,
-		Yield:    yield,
+		CropID:      crop.ID,
+		CropName:    crop.Name,
+		Yield:       yield,
+		SeedDropped: seedDropped,
+		SeedName:    seed.Name,
 	}, nil
 }
 
 type HarvestResult struct {
-	CropID   uint   `json:"crop_id"`
-	CropName string `json:"crop_name"`
-	Yield    int    `json:"yield"`
+	CropID      uint   `json:"crop_id"`
+	CropName    string `json:"crop_name"`
+	Yield       int    `json:"yield"`
+	SeedDropped int    `json:"seed_dropped"`
+	SeedName    string `json:"seed_name"`
 }
 
 // SellCrop 出售作物
@@ -244,14 +364,20 @@ func (s *FarmService) SellCrop(userID uint, cropID uint, quantity int) (float64,
 
 	// 获取当前市场价格
 	marketStatus, err := s.marketRepo.GetMarketStatus("crop", cropID)
-	var price float64
+	var currentPrice float64
 	if err != nil {
-		price = crop.BaseSellPrice
+		currentPrice = crop.BaseSellPrice
 	} else {
-		price = marketStatus.CurrentPrice
+		currentPrice = marketStatus.CurrentPrice
 	}
 
-	totalEarning := price * float64(quantity)
+	// 计算带滑点的总收益（每卖1个，价格跌0.1%）
+	totalEarning := 0.0
+	tempPrice := currentPrice
+	for i := 0; i < quantity; i++ {
+		totalEarning += tempPrice
+		tempPrice *= 0.999
+	}
 
 	// 扣除作物
 	if err := s.farmRepo.RemoveFromInventory(userID, "crop", cropID, quantity); err != nil {
@@ -270,6 +396,12 @@ func (s *FarmService) SellCrop(userID uint, cropID uint, quantity int) (float64,
 		stats.TotalGoldEarned += totalEarning
 		s.userRepo.UpdateUserStats(stats)
 	}
+
+	// 更新市场交易量（卖出增加供给，价格下跌）
+	s.marketRepo.UpdateSellVolume("crop", cropID, quantity)
+
+	// WebSocket 广播价格更新
+	s.broadcastPriceUpdate("crop", cropID)
 
 	return totalEarning, nil
 }
@@ -331,11 +463,11 @@ func (s *FarmService) checkHarvestAchievements(userID uint, stats *models.UserSt
 	for _, a := range harvestAchievements {
 		if stats.TotalHarvested >= a.count {
 			// 检查是否已获得
-			_, err := achievementRepo.GetUserAchievement(userID, a.code)
-			if err != nil {
+			ua, _ := achievementRepo.GetUserAchievement(userID, a.code)
+			if ua == nil {
 				// 未获得，尝试解锁
-				achievement, err := achievementRepo.GetAchievementByCode(a.code)
-				if err == nil {
+				achievement, _ := achievementRepo.GetAchievementByCode(a.code)
+				if achievement != nil {
 					achievementRepo.UnlockAchievement(userID, achievement.ID)
 					// 增加成就点数
 					stats.AchievementPoints += achievement.Points

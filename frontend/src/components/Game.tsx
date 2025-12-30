@@ -197,7 +197,11 @@ export default function Game({ onOpenMarket }: GameProps) {
       // 成熟：收获
       try {
         const result = await api.harvest(slotIndex)
-        showToast(`收获 ${result.result.crop_name} x${result.result.yield}`, 'success')
+        let msg = `收获 ${result.result.crop_name} x${result.result.yield}`
+        if (result.result.seed_dropped > 0) {
+          msg += `，掉落种子 x1`
+        }
+        showToast(msg, 'success')
         refreshFarms()
         refreshInventory()
         refreshProfile()

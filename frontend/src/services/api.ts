@@ -1,4 +1,4 @@
-import type { User, UserStats, Seed, Farm, InventoryItem, Stock, UserStock, LeveragePosition, Auction, BlackmarketItem, Friend, Achievement, UserAchievement, ChatMessage, RankingItem } from '../types'
+import type { User, UserStats, Seed, Crop, Farm, InventoryItem, Stock, UserStock, LeveragePosition, Auction, BlackmarketItem, Friend, Achievement, UserAchievement, ChatMessage, RankingItem } from '../types'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1'
 
@@ -87,6 +87,10 @@ class ApiService {
     return this.request<{ seeds: Seed[] }>('/farm/seeds')
   }
 
+  async getCrops() {
+    return this.request<{ crops: Crop[] }>('/farm/crops')
+  }
+
   async getFarms() {
     return this.request<{ farms: Farm[] }>('/farm/farms')
   }
@@ -110,7 +114,7 @@ class ApiService {
   }
 
   async harvest(slotIndex: number) {
-    return this.request<{ message: string; result: { crop_id: number; crop_name: string; yield: number } }>('/farm/harvest', {
+    return this.request<{ message: string; result: { crop_id: number; crop_name: string; yield: number; seed_dropped: number; seed_name: string } }>('/farm/harvest', {
       method: 'POST',
       body: JSON.stringify({ slot_index: slotIndex }),
     })

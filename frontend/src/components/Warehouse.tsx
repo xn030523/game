@@ -23,8 +23,8 @@ export default function Warehouse({ isOpen, onClose }: WarehouseProps) {
     }
   }, [isOpen])
 
-  const seedItems = inventory.filter(i => i.item_type === 'seed')
-  const cropItems = inventory.filter(i => i.item_type === 'crop')
+  const seedItems = inventory.filter(i => i.item_type === 'seed' && i.quantity > 0)
+  const cropItems = inventory.filter(i => i.item_type === 'crop' && i.quantity > 0)
 
   const getSeedInfo = (seedId: number) => seeds.find(s => s.id === seedId)
 

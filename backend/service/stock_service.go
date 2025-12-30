@@ -4,6 +4,7 @@ import (
 	"errors"
 	"farm-game/models"
 	"farm-game/repository"
+	"farm-game/ws"
 	"math"
 	"time"
 )
@@ -106,7 +107,11 @@ func (s *StockService) BuyStock(userID, stockID uint, shares int64) error {
 		Price:       stock.CurrentPrice,
 		TotalAmount: totalCost,
 	}
-	return s.stockRepo.CreateStockOrder(order)
+	s.stockRepo.CreateStockOrder(order)
+
+	// 买入推动价格上涨（每100股涨0.1%）
+	s.updateStockPrice(stock, shares, true)
+	return nil
 }
 
 // SellStock 卖出股票(现货)
@@ -159,6 +164,9 @@ func (s *StockService) SellStock(userID, stockID uint, shares int64) (float64, e
 		Profit:      profit,
 	}
 	s.stockRepo.CreateStockOrder(order)
+
+	// 卖出推动价格下跌（每100股跌0.1%）
+	s.updateStockPrice(stock, shares, false)
 
 	return profit, nil
 }
@@ -474,4 +482,39 @@ func (s *StockService) CalculateUserTotalAssets(userID uint) float64 {
 	}
 
 	return math.Max(0, total)
+}
+
+// updateStockPrice 根据交易更新股票价格并广播
+func (s *StockService) updateStockPrice(stock *models.Stock, shares int64, isBuy bool) {
+	oldPrice := stock.CurrentPrice
+	// 每100股波动0.1%
+	changePercent := float64(shares) / 100.0 * 0.001
+	if !isBuy {
+		changePercent = -changePercent
+	}
+	
+	newPrice := oldPrice * (1 + changePercent)
+	// 限制在涨跌停范围内（±10%）
+	if stock.OpenPrice != nil {
+		maxPrice := *stock.OpenPrice * 1.1
+		minPrice := *stock.OpenPrice * 0.9
+		if newPrice > maxPrice {
+			newPrice = maxPrice
+		} else if newPrice < minPrice {
+			newPrice = minPrice
+		}
+		stock.ChangePercent = (newPrice - *stock.OpenPrice) / *stock.OpenPrice * 100
+	}
+	
+	stock.CurrentPrice = newPrice
+	s.stockRepo.UpdateStock(stock)
+	
+	// WebSocket 广播价格更新
+	ws.GameHub.Broadcast(ws.NewMessage(ws.MsgTypeStockPrice, map[string]interface{}{
+		"stock_id":       stock.ID,
+		"code":           stock.Code,
+		"current_price":  newPrice,
+		"change_percent": stock.ChangePercent,
+		"open_price":     stock.OpenPrice,
+	}))
 }

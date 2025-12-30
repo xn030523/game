@@ -12,86 +12,14 @@ import (
 	"gorm.io/gorm"
 )
 
-// UpdateMarketPrices 更新市场价格
-func UpdateMarketPrices() error {
+// ResetMarketVolume 重置24小时交易量（每日零点）
+func ResetMarketVolume() error {
 	db := config.GetDB()
-
-	// 获取所有市场状态
-	var statuses []models.MarketStatus
-	if err := db.Find(&statuses).Error; err != nil {
-		return err
-	}
-
-	for _, status := range statuses {
-		// 获取价格规则
-		var rule models.PriceRule
-		if err := db.Where("item_type = ? AND item_id = ?", status.ItemType, status.ItemID).First(&rule).Error; err != nil {
-			continue
-		}
-
-		// 计算供需影响
-		supplyFactor := 1.0
-		if status.SellVolume24h > status.BuyVolume24h {
-			// 供大于求，价格下跌
-			supplyFactor = 1.0 - float64(status.SellVolume24h-status.BuyVolume24h)/10000.0*rule.SupplyWeight
-		} else if status.BuyVolume24h > status.SellVolume24h {
-			// 求大于供，价格上涨
-			supplyFactor = 1.0 + float64(status.BuyVolume24h-status.SellVolume24h)/10000.0*rule.DemandWeight
-		}
-
-		// 添加随机波动
-		randomFactor := 1.0 + (rand.Float64()-0.5)*rule.Volatility
-
-		// 计算新价格
-		newRate := status.CurrentRate * supplyFactor * randomFactor
-
-		// 限制在最小最大范围内
-		if newRate < rule.MinRate {
-			newRate = rule.MinRate
-		}
-		if newRate > rule.MaxRate {
-			newRate = rule.MaxRate
-		}
-
-		newPrice := rule.BasePrice * newRate
-
-		// 确定趋势
-		trend := "stable"
-		if newPrice > status.CurrentPrice*1.01 {
-			trend = "up"
-		} else if newPrice < status.CurrentPrice*0.99 {
-			trend = "down"
-		}
-
-		// 更新状态
-		status.CurrentPrice = newPrice
-		status.CurrentRate = newRate
-		status.Trend = trend
-		db.Save(&status)
-
-		// 记录价格历史
-		history := &models.PriceHistory{
-			ItemType:   status.ItemType,
-			ItemID:     status.ItemID,
-			Price:      newPrice,
-			Rate:       newRate,
-			RecordedAt: time.Now(),
-		}
-		db.Create(history)
-
-		// 推送价格更新
-		if ws.Notify != nil {
-			ws.Notify.NotifyMarketUpdate(status.ItemType, status.ItemID, "", newPrice, trend)
-		}
-	}
-
-	// 重置24小时交易量
-	db.Model(&models.MarketStatus{}).Updates(map[string]interface{}{
-		"buy_volume_24h":  0,
-		"sell_volume_24h": 0,
+	db.Model(&models.MarketStatus{}).Where("1=1").Updates(map[string]interface{}{
+		"buy_volume24h":  0,
+		"sell_volume24h": 0,
 	})
-
-	log.Println("市场价格更新完成")
+	log.Println("市场24h交易量已重置")
 	return nil
 }
 
@@ -365,7 +293,7 @@ func UpdateRankings() error {
 func updateRanking(db *gorm.DB, rankType string, query string) {
 	type RankData struct {
 		UserID uint
-		Score  int64
+		Score  float64
 	}
 
 	var results []RankData

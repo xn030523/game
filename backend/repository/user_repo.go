@@ -51,12 +51,16 @@ func (r *UserRepository) UpdateGold(userID uint, amount float64) error {
 		Update("gold", gorm.Expr("gold + ?", amount)).Error
 }
 
-// GetUserStats 获取用户统计
+// GetUserStats 获取用户统计（不存在则自动创建）
 func (r *UserRepository) GetUserStats(userID uint) (*models.UserStats, error) {
 	var stats models.UserStats
 	err := r.db.Where("user_id = ?", userID).First(&stats).Error
 	if err != nil {
-		return nil, err
+		// 不存在则创建
+		stats = models.UserStats{UserID: userID}
+		if err := r.db.Create(&stats).Error; err != nil {
+			return nil, err
+		}
 	}
 	return &stats, nil
 }
@@ -68,7 +72,23 @@ func (r *UserRepository) CreateUserStats(stats *models.UserStats) error {
 
 // UpdateUserStats 更新用户统计
 func (r *UserRepository) UpdateUserStats(stats *models.UserStats) error {
-	return r.db.Save(stats).Error
+	return r.db.Model(stats).Updates(map[string]interface{}{
+		"total_planted":       stats.TotalPlanted,
+		"total_harvested":     stats.TotalHarvested,
+		"total_sold":          stats.TotalSold,
+		"total_bought":        stats.TotalBought,
+		"total_gold_earned":   stats.TotalGoldEarned,
+		"total_gold_spent":    stats.TotalGoldSpent,
+		"login_days":          stats.LoginDays,
+		"consecutive_days":    stats.ConsecutiveDays,
+		"contribution_points": stats.ContributionPoints,
+		"achievement_points":  stats.AchievementPoints,
+	}).Error
+}
+
+// UpdateUserStatsLoginDate 单独更新登录日期
+func (r *UserRepository) UpdateUserStatsLoginDate(statsID uint, date string) error {
+	return r.db.Model(&models.UserStats{}).Where("id = ?", statsID).Update("last_login_date", date).Error
 }
 
 // GetLevelConfig 获取等级配置

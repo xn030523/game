@@ -72,6 +72,7 @@ func SetupRouter() *gin.Engine {
 			// 农场相关
 			farmHandler := handler.NewFarmHandler()
 			auth.GET("/farm/seeds", farmHandler.GetSeeds)
+			auth.GET("/farm/crops", farmHandler.GetCrops)
 			auth.GET("/farm/farms", farmHandler.GetFarms)
 			auth.POST("/farm/buy-seed", farmHandler.BuySeed)
 			auth.POST("/farm/plant", farmHandler.Plant)

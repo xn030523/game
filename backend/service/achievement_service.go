@@ -267,8 +267,8 @@ func (s *AchievementService) Checkin(userID uint) (int, error) {
 	todayStr := today.Format("2006-01-02")
 	stats.LoginDays++
 	stats.ConsecutiveDays = consecutiveDays
-	stats.LastLoginDate = &todayStr
 	s.userRepo.UpdateUserStats(stats)
+	s.userRepo.UpdateUserStatsLoginDate(stats.ID, todayStr)
 
 	// 更新贡献值
 	user.Contribution++
