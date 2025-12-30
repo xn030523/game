@@ -1,52 +1,46 @@
 package main
 
 import (
+	"farm-game/config"
+	"farm-game/cron"
+	"farm-game/router"
 	"farm-game/ws"
 	"log"
-
-	"github.com/gin-gonic/gin"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
 func main() {
+	// 加载配置
+	config.Load()
+
+	// 初始化数据库
+	config.InitDB()
+
 	// 初始化 WebSocket Hub
 	ws.Init()
+	ws.InitNotify()
 
-	r := gin.Default()
+	// 初始化定时任务
+	cron.Init()
 
-	// CORS
-	r.Use(func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type")
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-		c.Next()
-	})
+	// 设置路由
+	r := router.SetupRouter()
 
-	// WebSocket 路由
-	r.GET("/ws", func(c *gin.Context) {
-		// 从查询参数获取用户ID（生产环境应该从 JWT 验证）
-		userID := c.Query("user_id")
-		if userID == "" {
-			userID = "anonymous"
-		}
-		ws.ServeWs(ws.GameHub, c.Writer, c.Request, userID)
-	})
+	// 优雅关闭
+	go func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+		<-sigChan
+		log.Println("收到关闭信号，正在关闭...")
+		cron.Stop()
+		os.Exit(0)
+	}()
 
-	// API 路由
-	api := r.Group("/api")
-	{
-		// 获取在线人数
-		api.GET("/online", func(c *gin.Context) {
-			c.JSON(200, gin.H{
-				"count": ws.GameHub.GetOnlineCount(),
-				"users": ws.GameHub.GetOnlineUsers(),
-			})
-		})
+	// 启动服务
+	log.Printf("服务启动在 :%s", config.AppConfig.ServerPort)
+	if err := r.Run(":" + config.AppConfig.ServerPort); err != nil {
+		log.Fatal("服务启动失败:", err)
 	}
-
-	log.Println("服务器启动在 :8080")
-	r.Run(":8080")
 }

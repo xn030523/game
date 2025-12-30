@@ -351,3 +351,217 @@ CREATE TABLE chat_messages (
     INDEX idx_channel_time (channel, created_at),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB COMMENT='聊天记录表';
+
+-- ==================== 股票交易所 ====================
+
+-- 股票定义表
+CREATE TABLE stocks (
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    code VARCHAR(10) NOT NULL UNIQUE COMMENT '股票代码',
+    name VARCHAR(50) NOT NULL COMMENT '股票名称',
+    description VARCHAR(255) COMMENT '描述',
+    icon VARCHAR(255) COMMENT '图标',
+    base_price DECIMAL(10,2) NOT NULL COMMENT '基准价格',
+    current_price DECIMAL(10,2) NOT NULL COMMENT '当前价格',
+    open_price DECIMAL(10,2) COMMENT '开盘价',
+    high_price DECIMAL(10,2) COMMENT '最高价',
+    low_price DECIMAL(10,2) COMMENT '最低价',
+    close_price DECIMAL(10,2) COMMENT '收盘价',
+    price_min DECIMAL(10,2) NOT NULL COMMENT '历史最低',
+    price_max DECIMAL(10,2) NOT NULL COMMENT '历史最高',
+    total_shares BIGINT NOT NULL COMMENT '总股本',
+    available_shares BIGINT NOT NULL COMMENT '流通股本',
+    today_volume BIGINT DEFAULT 0 COMMENT '今日成交量',
+    today_amount DECIMAL(20,2) DEFAULT 0 COMMENT '今日成交额',
+    volatility DECIMAL(5,2) DEFAULT 0.10 COMMENT '波动系数',
+    max_leverage INT DEFAULT 10 COMMENT '最大杠杆倍数',
+    trend ENUM('up', 'down', 'stable') DEFAULT 'stable' COMMENT '趋势',
+    change_percent DECIMAL(10,4) DEFAULT 0 COMMENT '涨跌幅',
+    is_active TINYINT(1) DEFAULT 1 COMMENT '是否上市',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB COMMENT='股票定义表';
+
+-- 股票价格历史 (K线数据)
+CREATE TABLE stock_prices (
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    stock_id BIGINT UNSIGNED NOT NULL,
+    price DECIMAL(10,2) NOT NULL COMMENT '收盘价',
+    open_price DECIMAL(10,2) COMMENT '开盘价',
+    high_price DECIMAL(10,2) COMMENT '最高价',
+    low_price DECIMAL(10,2) COMMENT '最低价',
+    volume BIGINT DEFAULT 0 COMMENT '成交量',
+    amount DECIMAL(20,2) DEFAULT 0 COMMENT '成交额',
+    period_type ENUM('1m', '5m', '15m', '1h', '1d') DEFAULT '1m' COMMENT '周期类型',
+    recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_stock_time (stock_id, period_type, recorded_at),
+    FOREIGN KEY (stock_id) REFERENCES stocks(id)
+) ENGINE=InnoDB COMMENT='股票价格历史';
+
+-- 用户持仓表 (现货)
+CREATE TABLE user_stocks (
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NOT NULL,
+    stock_id BIGINT UNSIGNED NOT NULL,
+    shares BIGINT NOT NULL DEFAULT 0 COMMENT '持有股数',
+    avg_cost DECIMAL(10,2) NOT NULL COMMENT '平均成本',
+    total_cost DECIMAL(20,2) NOT NULL COMMENT '总成本',
+    realized_profit DECIMAL(20,2) DEFAULT 0 COMMENT '已实现盈亏',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_user_stock (user_id, stock_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (stock_id) REFERENCES stocks(id)
+) ENGINE=InnoDB COMMENT='用户现货持仓表';
+
+-- 用户杠杆仓位表
+CREATE TABLE user_leverage_positions (
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NOT NULL,
+    stock_id BIGINT UNSIGNED NOT NULL,
+    position_type ENUM('long', 'short') NOT NULL COMMENT '做多/做空',
+    leverage INT NOT NULL COMMENT '杠杆倍数',
+    shares BIGINT NOT NULL COMMENT '持仓数量',
+    entry_price DECIMAL(10,2) NOT NULL COMMENT '开仓价格',
+    margin DECIMAL(20,2) NOT NULL COMMENT '保证金',
+    liquidation_price DECIMAL(10,2) NOT NULL COMMENT '强平价格',
+    unrealized_profit DECIMAL(20,2) DEFAULT 0 COMMENT '未实现盈亏',
+    status ENUM('open', 'closed', 'liquidated') DEFAULT 'open' COMMENT '状态',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    closed_at DATETIME COMMENT '平仓时间',
+    INDEX idx_user (user_id),
+    INDEX idx_status (status),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (stock_id) REFERENCES stocks(id)
+) ENGINE=InnoDB COMMENT='用户杠杆仓位表';
+
+-- 股票交易记录
+CREATE TABLE stock_orders (
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NOT NULL,
+    stock_id BIGINT UNSIGNED NOT NULL,
+    order_type ENUM('buy', 'sell', 'long_open', 'long_close', 'short_open', 'short_close') NOT NULL COMMENT '订单类型',
+    leverage INT DEFAULT 1 COMMENT '杠杆倍数(现货为1)',
+    shares BIGINT NOT NULL COMMENT '股数',
+    price DECIMAL(10,2) NOT NULL COMMENT '成交价',
+    total_amount DECIMAL(20,2) NOT NULL COMMENT '总金额',
+    margin DECIMAL(20,2) DEFAULT 0 COMMENT '保证金',
+    profit DECIMAL(20,2) DEFAULT 0 COMMENT '盈亏(平仓时)',
+    position_id BIGINT UNSIGNED COMMENT '关联仓位ID',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user (user_id),
+    INDEX idx_stock (stock_id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (stock_id) REFERENCES stocks(id)
+) ENGINE=InnoDB COMMENT='股票交易记录';
+
+-- 用户股票统计表 (用于排行)
+CREATE TABLE user_stock_stats (
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NOT NULL UNIQUE,
+    total_assets DECIMAL(20,2) DEFAULT 0 COMMENT '股票总资产',
+    total_profit DECIMAL(20,2) DEFAULT 0 COMMENT '累计盈亏',
+    total_profit_rate DECIMAL(10,4) DEFAULT 0 COMMENT '累计收益率',
+    today_profit DECIMAL(20,2) DEFAULT 0 COMMENT '今日盈亏',
+    today_profit_rate DECIMAL(10,4) DEFAULT 0 COMMENT '今日收益率',
+    win_count INT DEFAULT 0 COMMENT '盈利次数',
+    lose_count INT DEFAULT 0 COMMENT '亏损次数',
+    win_rate DECIMAL(5,2) DEFAULT 0 COMMENT '胜率',
+    max_profit DECIMAL(20,2) DEFAULT 0 COMMENT '单笔最大盈利',
+    max_loss DECIMAL(20,2) DEFAULT 0 COMMENT '单笔最大亏损',
+    trade_count INT DEFAULT 0 COMMENT '交易次数',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB COMMENT='用户股票统计表';
+
+-- 股票排行榜
+CREATE TABLE stock_rankings (
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    rank_type ENUM('assets', 'profit', 'profit_rate', 'win_rate', 'shares') NOT NULL COMMENT '排行类型',
+    stock_id BIGINT UNSIGNED COMMENT '股票ID(持股排行用)',
+    user_id BIGINT UNSIGNED NOT NULL,
+    rank_position INT NOT NULL COMMENT '排名',
+    score DECIMAL(20,4) NOT NULL COMMENT '分数',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_type_stock_user (rank_type, stock_id, user_id),
+    INDEX idx_type_rank (rank_type, stock_id, rank_position),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB COMMENT='股票排行榜';
+
+-- ==================== 余额转换公益站 ====================
+
+-- 公益站转换记录
+CREATE TABLE charity_transfers (
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NOT NULL,
+    transfer_type ENUM('in', 'out') NOT NULL COMMENT 'in=充入游戏, out=提取到公益站',
+    amount DECIMAL(20,2) NOT NULL COMMENT '金额',
+    charity_amount DECIMAL(20,2) NOT NULL COMMENT '公益站金额',
+    exchange_rate DECIMAL(10,4) NOT NULL COMMENT '汇率',
+    status ENUM('pending', 'completed', 'failed') DEFAULT 'pending',
+    remark VARCHAR(255) COMMENT '备注',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    completed_at DATETIME,
+    INDEX idx_user (user_id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+) ENGINE=InnoDB COMMENT='公益站转换记录';
+
+-- ==================== 黑市商人 ====================
+
+-- 黑市刷新批次表
+CREATE TABLE blackmarket_batches (
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    start_at DATETIME NOT NULL COMMENT '开始时间',
+    end_at DATETIME NOT NULL COMMENT '结束时间',
+    is_active TINYINT(1) DEFAULT 1 COMMENT '是否当前批次',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB COMMENT='黑市刷新批次表';
+
+-- 黑市商品表 (每次刷新随机生成)
+CREATE TABLE blackmarket_items (
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    batch_id BIGINT UNSIGNED NOT NULL COMMENT '批次ID',
+    name VARCHAR(50) NOT NULL COMMENT '商品名称',
+    description VARCHAR(255) COMMENT '描述',
+    icon VARCHAR(255) COMMENT '图标',
+    item_type ENUM('seed', 'crop', 'tool', 'special') NOT NULL COMMENT '物品类型',
+    item_id BIGINT UNSIGNED COMMENT '关联物品ID',
+    price DECIMAL(10,2) NOT NULL COMMENT '黑市价格',
+    total_stock INT NOT NULL COMMENT '全服总库存',
+    sold_count INT DEFAULT 0 COMMENT '已售数量',
+    unlock_level INT DEFAULT 1 COMMENT '解锁等级',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (batch_id) REFERENCES blackmarket_batches(id)
+) ENGINE=InnoDB COMMENT='黑市商品表';
+
+-- 黑市交易记录
+CREATE TABLE blackmarket_logs (
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NOT NULL,
+    batch_id BIGINT UNSIGNED NOT NULL COMMENT '批次ID',
+    item_id BIGINT UNSIGNED NOT NULL,
+    quantity INT NOT NULL,
+    price DECIMAL(10,2) NOT NULL,
+    total_price DECIMAL(20,2) NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user (user_id),
+    INDEX idx_batch (batch_id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (batch_id) REFERENCES blackmarket_batches(id),
+    FOREIGN KEY (item_id) REFERENCES blackmarket_items(id)
+) ENGINE=InnoDB COMMENT='黑市交易记录';
+
+-- ==================== 排行榜 ====================
+
+-- 排行榜缓存表
+CREATE TABLE rankings (
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    rank_type ENUM('gold', 'level', 'contribution', 'achievement', 'harvest', 'trade') NOT NULL COMMENT '排行类型',
+    user_id BIGINT UNSIGNED NOT NULL,
+    rank_position INT NOT NULL COMMENT '排名',
+    score BIGINT NOT NULL COMMENT '分数',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_type_user (rank_type, user_id),
+    INDEX idx_type_rank (rank_type, rank_position),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB COMMENT='排行榜缓存表';

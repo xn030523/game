@@ -2,7 +2,6 @@ package ws
 
 import (
 	"encoding/json"
-	"log"
 	"time"
 )
 
@@ -14,18 +13,35 @@ const (
 	MsgTypePing      = "ping"      // 心跳
 	MsgTypePong      = "pong"      // 心跳响应
 
-	// 游戏消息
-	MsgTypeGameState  = "game_state"  // 游戏状态同步
-	MsgTypeGameAction = "game_action" // 游戏动作
-	MsgTypeGameEvent  = "game_event"  // 游戏事件
-
 	// 聊天消息
-	MsgTypeChat = "chat" // 聊天消息
+	MsgTypeChat       = "chat"        // 世界聊天
+	MsgTypeChatPrivate = "chat_private" // 私聊
 
 	// 玩家消息
 	MsgTypePlayerJoin  = "player_join"  // 玩家加入
 	MsgTypePlayerLeave = "player_leave" // 玩家离开
 	MsgTypePlayerList  = "player_list"  // 在线玩家列表
+
+	// 通知消息
+	MsgTypeNotify       = "notify"        // 通用通知
+	MsgTypeMailNew      = "mail_new"      // 新邮件
+	MsgTypeFriendReq    = "friend_request" // 好友申请
+	MsgTypeFriendMsg    = "friend_message" // 好友消息
+	MsgTypeAuctionBid   = "auction_bid"   // 拍卖被出价
+	MsgTypeAuctionEnd   = "auction_end"   // 拍卖结束
+	MsgTypeStockAlert   = "stock_alert"   // 股票预警
+	MsgTypeLiquidation  = "liquidation"   // 强平通知
+	MsgTypeAchievement  = "achievement"   // 成就达成
+	MsgTypeLevelUp      = "level_up"      // 升级通知
+
+	// 市场消息
+	MsgTypeMarketUpdate   = "market_update"   // 市场价格更新
+	MsgTypeBlackmarketNew = "blackmarket_new" // 黑市刷新
+	MsgTypeStockPrice     = "stock_price"     // 股票价格更新
+
+	// 农场消息
+	MsgTypeCropMature = "crop_mature" // 作物成熟
+	MsgTypeCropStolen = "crop_stolen" // 作物被偷
 )
 
 // Message WebSocket 消息结构
@@ -112,7 +128,6 @@ type MessageHandler func(client *Client, msg *Message)
 // 消息处理函数映射
 var messageHandlers = map[string]MessageHandler{
 	MsgTypePing:       handlePing,
-	MsgTypeGameAction: handleGameAction,
 	MsgTypeChat:       handleChat,
 	MsgTypePlayerList: handlePlayerList,
 }
@@ -129,25 +144,6 @@ func handlePing(client *Client, msg *Message) {
 		RequestID: msg.RequestID,
 		Data: map[string]interface{}{
 			"server_time": time.Now().UnixMilli(),
-		},
-	})
-}
-
-// handleGameAction 处理游戏动作
-func handleGameAction(client *Client, msg *Message) {
-	action := msg.GetString("action")
-	log.Printf("收到游戏动作: UserID=%s, Action=%s", client.UserID, action)
-
-	// TODO: 根据具体游戏逻辑处理动作
-	// 这里可以扩展各种游戏动作的处理
-
-	// 示例：广播动作给所有玩家
-	GameHub.Broadcast(&Message{
-		Type: MsgTypeGameEvent,
-		Data: map[string]interface{}{
-			"user_id": client.UserID,
-			"action":  action,
-			"data":    msg.Data,
 		},
 	})
 }
