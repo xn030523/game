@@ -42,6 +42,16 @@ func (r *AchievementRepository) GetAchievementsByCategory(category string) ([]mo
 	return achievements, err
 }
 
+// GetAchievementByCode 根据code获取成就
+func (r *AchievementRepository) GetAchievementByCode(code string) (*models.Achievement, error) {
+	var achievement models.Achievement
+	err := r.db.Where("code = ?", code).First(&achievement).Error
+	if err != nil {
+		return nil, err
+	}
+	return &achievement, nil
+}
+
 // === 用户成就 ===
 
 // GetUserAchievements 获取用户成就列表
@@ -52,7 +62,19 @@ func (r *AchievementRepository) GetUserAchievements(userID uint) ([]models.UserA
 }
 
 // GetUserAchievement 获取用户指定成就
-func (r *AchievementRepository) GetUserAchievement(userID, achievementID uint) (*models.UserAchievement, error) {
+func (r *AchievementRepository) GetUserAchievement(userID uint, code string) (*models.UserAchievement, error) {
+	var ua models.UserAchievement
+	err := r.db.Joins("JOIN achievements ON achievements.id = user_achievements.achievement_id").
+		Where("user_achievements.user_id = ? AND achievements.code = ?", userID, code).
+		Preload("Achievement").First(&ua).Error
+	if err != nil {
+		return nil, err
+	}
+	return &ua, nil
+}
+
+// GetUserAchievementByID 获取用户指定成就(通过ID)
+func (r *AchievementRepository) GetUserAchievementByID(userID, achievementID uint) (*models.UserAchievement, error) {
 	var ua models.UserAchievement
 	err := r.db.Where("user_id = ? AND achievement_id = ?", userID, achievementID).
 		Preload("Achievement").First(&ua).Error
@@ -64,6 +86,19 @@ func (r *AchievementRepository) GetUserAchievement(userID, achievementID uint) (
 
 // CreateUserAchievement 创建用户成就
 func (r *AchievementRepository) CreateUserAchievement(ua *models.UserAchievement) error {
+	return r.db.Create(ua).Error
+}
+
+// UnlockAchievement 解锁成就
+func (r *AchievementRepository) UnlockAchievement(userID, achievementID uint) error {
+	now := time.Now()
+	ua := &models.UserAchievement{
+		UserID:        userID,
+		AchievementID: achievementID,
+		Progress:      100,
+		IsCompleted:   true,
+		CompletedAt:   &now,
+	}
 	return r.db.Create(ua).Error
 }
 

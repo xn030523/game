@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import Modal from './Modal'
 import { useUser } from '../contexts/UserContext'
+import { useToast } from './Toast'
 import { api } from '../services/api'
 import type { Seed } from '../types'
 
@@ -10,11 +11,20 @@ interface MarketProps {
 }
 
 export default function Market({ isOpen, onClose }: MarketProps) {
-  const { user, refreshProfile, refreshInventory } = useUser()
+  const { user, inventory, refreshProfile, refreshInventory } = useUser()
+  const { showToast } = useToast()
+  const [tab, setTab] = useState<'buy' | 'sell' | 'recycle'>('buy')
   const [seeds, setSeeds] = useState<Seed[]>([])
   const [loading, setLoading] = useState(false)
   const [buying, setBuying] = useState<number | null>(null)
+  const [selling, setSelling] = useState<number | null>(null)
+  const [recycling, setRecycling] = useState<number | null>(null)
   const [quantities, setQuantities] = useState<Record<number, number>>({})
+  const [sellQuantities, setSellQuantities] = useState<Record<number, number>>({})
+  const [recycleQuantities, setRecycleQuantities] = useState<Record<number, number>>({})
+
+  const cropItems = inventory.filter(i => i.item_type === 'crop')
+  const seedItems = inventory.filter(i => i.item_type === 'seed')
 
   useEffect(() => {
     if (isOpen) {
@@ -22,33 +32,87 @@ export default function Market({ isOpen, onClose }: MarketProps) {
       api.getSeeds()
         .then(data => setSeeds(data.seeds))
         .finally(() => setLoading(false))
+      refreshInventory()
     }
-  }, [isOpen])
+  }, [isOpen, refreshInventory])
 
   const handleBuy = async (seedId: number) => {
     const quantity = quantities[seedId] || 1
     setBuying(seedId)
     try {
       await api.buySeed(seedId, quantity)
-      alert('购买成功！')
+      showToast('购买成功！', 'success')
       refreshProfile()
       refreshInventory()
     } catch (e) {
-      alert((e as Error).message)
+      showToast((e as Error).message, 'error')
     } finally {
       setBuying(null)
     }
   }
 
+  const handleSell = async (cropId: number, maxQty: number) => {
+    const quantity = sellQuantities[cropId] || maxQty
+    setSelling(cropId)
+    try {
+      const result = await api.sellCrop(cropId, quantity)
+      showToast(`出售成功！+${result.earning.toFixed(0)} 金币`, 'success')
+      refreshProfile()
+      refreshInventory()
+    } catch (e) {
+      showToast((e as Error).message, 'error')
+    } finally {
+      setSelling(null)
+    }
+  }
+
+  const getCropInfo = (cropId: number) => {
+    // 通过 seed 找到对应作物信息
+    return seeds.find(s => s.id === cropId)
+  }
+
+  const getSeedInfo = (seedId: number) => {
+    return seeds.find(s => s.id === seedId)
+  }
+
+  const handleRecycle = async (seedId: number, maxQty: number) => {
+    const quantity = recycleQuantities[seedId] || maxQty
+    setRecycling(seedId)
+    try {
+      const seed = getSeedInfo(seedId)
+      const recyclePrice = (seed?.base_price || 10) * 0.3 * quantity
+      await api.recycleSeed(seedId, quantity)
+      showToast(`回收成功！+${recyclePrice.toFixed(0)} 金币`, 'success')
+      refreshProfile()
+      refreshInventory()
+    } catch (e) {
+      showToast((e as Error).message, 'error')
+    } finally {
+      setRecycling(null)
+    }
+  }
+
   return (
-    <Modal title="种子商店" isOpen={isOpen} onClose={onClose}>
+    <Modal title="交易市场" isOpen={isOpen} onClose={onClose}>
       <div style={{ marginBottom: 16, color: '#ffd700' }}>
         当前金币: {user?.gold.toFixed(2) || 0}
       </div>
 
+      <div className="tabs">
+        <button className={`tab ${tab === 'buy' ? 'active' : ''}`} onClick={() => setTab('buy')}>
+          🛒 购买种子
+        </button>
+        <button className={`tab ${tab === 'sell' ? 'active' : ''}`} onClick={() => setTab('sell')}>
+          💰 出售作物 ({cropItems.reduce((sum, i) => sum + i.quantity, 0)})
+        </button>
+        <button className={`tab ${tab === 'recycle' ? 'active' : ''}`} onClick={() => setTab('recycle')}>
+          ♻️ 回收种子 ({seedItems.reduce((sum, i) => sum + i.quantity, 0)})
+        </button>
+      </div>
+
       {loading ? (
         <p style={{ textAlign: 'center' }}>加载中...</p>
-      ) : (
+      ) : tab === 'buy' ? (
         <div className="grid grid-2">
           {seeds.map(seed => (
             <div key={seed.id} className="card">
@@ -101,6 +165,124 @@ export default function Market({ isOpen, onClose }: MarketProps) {
               </div>
             </div>
           ))}
+        </div>
+      ) : tab === 'sell' ? (
+        <div className="grid grid-2">
+          {cropItems.length === 0 ? (
+            <p style={{ gridColumn: '1/-1', textAlign: 'center', color: '#888' }}>暂无可出售的作物</p>
+          ) : (
+            cropItems.map(item => {
+              const crop = getCropInfo(item.item_id)
+              return (
+                <div key={item.id} className="card">
+                  <div className="card-header">
+                    {crop?.icon && (
+                      <img 
+                        src={`${crop.icon}/4.png`} 
+                        alt={crop?.name}
+                        style={{ width: 32, height: 32, imageRendering: 'pixelated' }}
+                      />
+                    )}
+                    <h4 className="card-title" style={{ flex: 1, marginLeft: 8 }}>
+                      {crop?.name?.replace('种子', '') || `作物#${item.item_id}`}
+                    </h4>
+                    <span style={{ color: '#ffd700' }}>×{item.quantity}</span>
+                  </div>
+                  <p style={{ fontSize: '0.9rem', marginBottom: 12 }}>
+                    单价: <span style={{ color: '#4caf50' }}>{((crop?.base_price || 10) * 1.5).toFixed(0)}</span> 金币
+                  </p>
+                  
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type="number"
+                      min="1"
+                      max={item.quantity}
+                      value={sellQuantities[item.item_id] || item.quantity}
+                      onChange={e => setSellQuantities({ ...sellQuantities, [item.item_id]: Math.min(parseInt(e.target.value) || 1, item.quantity) })}
+                      style={{
+                        width: 60,
+                        padding: '6px 8px',
+                        border: '2px solid #5c3a1e',
+                        borderRadius: 4,
+                        background: 'rgba(0,0,0,0.3)',
+                        color: '#fff',
+                        textAlign: 'center'
+                      }}
+                    />
+                    <button
+                      className="btn btn-primary"
+                      style={{ flex: 1 }}
+                      disabled={selling === item.item_id}
+                      onClick={() => handleSell(item.item_id, item.quantity)}
+                    >
+                      {selling === item.item_id ? '出售中...' : '出售'}
+                    </button>
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-2">
+          {seedItems.length === 0 ? (
+            <p style={{ gridColumn: '1/-1', textAlign: 'center', color: '#888' }}>暂无可回收的种子</p>
+          ) : (
+            seedItems.map(item => {
+              const seed = getSeedInfo(item.item_id)
+              const recyclePrice = (seed?.base_price || 10) * 0.3
+              return (
+                <div key={item.id} className="card">
+                  <div className="card-header">
+                    {seed?.icon && (
+                      <img 
+                        src={`${seed.icon}/0.png`} 
+                        alt={seed?.name}
+                        style={{ width: 32, height: 32, imageRendering: 'pixelated' }}
+                      />
+                    )}
+                    <h4 className="card-title" style={{ flex: 1, marginLeft: 8 }}>
+                      {seed?.name || `种子#${item.item_id}`}
+                    </h4>
+                    <span style={{ color: '#ffd700' }}>×{item.quantity}</span>
+                  </div>
+                  <p style={{ fontSize: '0.9rem', marginBottom: 4 }}>
+                    原价: <span style={{ color: '#888', textDecoration: 'line-through' }}>{seed?.base_price || 10}</span> 金币
+                  </p>
+                  <p style={{ fontSize: '0.9rem', marginBottom: 12 }}>
+                    回收价: <span style={{ color: '#f44336' }}>{recyclePrice.toFixed(0)}</span> 金币 <span style={{ color: '#888', fontSize: '0.8rem' }}>(30%)</span>
+                  </p>
+                  
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type="number"
+                      min="1"
+                      max={item.quantity}
+                      value={recycleQuantities[item.item_id] || item.quantity}
+                      onChange={e => setRecycleQuantities({ ...recycleQuantities, [item.item_id]: Math.min(parseInt(e.target.value) || 1, item.quantity) })}
+                      style={{
+                        width: 60,
+                        padding: '6px 8px',
+                        border: '2px solid #5c3a1e',
+                        borderRadius: 4,
+                        background: 'rgba(0,0,0,0.3)',
+                        color: '#fff',
+                        textAlign: 'center'
+                      }}
+                    />
+                    <button
+                      className="btn btn-danger"
+                      style={{ flex: 1 }}
+                      disabled={recycling === item.item_id}
+                      onClick={() => handleRecycle(item.item_id, item.quantity)}
+                    >
+                      {recycling === item.item_id ? '回收中...' : '回收'}
+                    </button>
+                  </div>
+                </div>
+              )
+            })
+          )}
         </div>
       )}
     </Modal>

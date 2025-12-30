@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import Modal from './Modal'
 import { useUser } from '../contexts/UserContext'
+import { useToast } from './Toast'
 import { api } from '../services/api'
 import { ws } from '../services/websocket'
 import type { Stock, UserStock, LeveragePosition } from '../types'
@@ -12,6 +13,7 @@ interface StockExchangeProps {
 
 export default function StockExchange({ isOpen, onClose }: StockExchangeProps) {
   const { user, refreshProfile } = useUser()
+  const { showToast } = useToast()
   const [tab, setTab] = useState<'market' | 'holdings' | 'positions'>('market')
   const [stocks, setStocks] = useState<Stock[]>([])
   const [myStocks, setMyStocks] = useState<UserStock[]>([])
@@ -64,33 +66,33 @@ export default function StockExchange({ isOpen, onClose }: StockExchangeProps) {
     try {
       if (tradeType === 'buy') {
         await api.buyStock(selectedStock.id, shares)
-        alert('买入成功！')
+        showToast('买入成功！', 'success')
       } else if (tradeType === 'sell') {
         const result = await api.sellStock(selectedStock.id, shares)
-        alert(`卖出成功！盈亏: ${result.profit.toFixed(2)}`)
+        showToast(`卖出成功！盈亏: ${result.profit.toFixed(2)}`, result.profit >= 0 ? 'success' : 'info')
       } else if (tradeType === 'long') {
         await api.openLong(selectedStock.id, leverage, margin)
-        alert('开多成功！')
+        showToast('开多成功！', 'success')
       } else if (tradeType === 'short') {
         await api.openShort(selectedStock.id, leverage, margin)
-        alert('开空成功！')
+        showToast('开空成功！', 'success')
       }
       refreshProfile()
       loadData()
       setSelectedStock(null)
     } catch (e) {
-      alert((e as Error).message)
+      showToast((e as Error).message, 'error')
     }
   }
 
   const handleClosePosition = async (positionId: number) => {
     try {
       const result = await api.closePosition(positionId)
-      alert(`平仓成功！盈亏: ${result.profit.toFixed(2)}`)
+      showToast(`平仓成功！盈亏: ${result.profit.toFixed(2)}`, result.profit >= 0 ? 'success' : 'info')
       refreshProfile()
       loadData()
     } catch (e) {
-      alert((e as Error).message)
+      showToast((e as Error).message, 'error')
     }
   }
 

@@ -1,34 +1,49 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import './Chat.css'
-
-interface Message {
-  id: number
-  user: string
-  text: string
-  time: string
-}
-
-const mockMessages: Message[] = [
-  { id: 1, user: '系统', text: '欢迎来到农场游戏！', time: '10:00' },
-  { id: 2, user: '农场主A', text: '大家好！', time: '10:01' },
-  { id: 3, user: '农场主B', text: '今天收成不错', time: '10:02' },
-]
+import { useToast } from './Toast'
+import { api } from '../services/api'
+import { ws } from '../services/websocket'
+import type { ChatMessage } from '../types'
 
 export default function Chat() {
-  const [messages, setMessages] = useState<Message[]>(mockMessages)
+  const { showToast } = useToast()
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [isOpen, setIsOpen] = useState(true)
+  const [sending, setSending] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const sendMessage = () => {
-    if (!input.trim()) return
-    const newMsg: Message = {
-      id: Date.now(),
-      user: '农场主',
-      text: input,
-      time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  useEffect(() => {
+    // 加载历史消息
+    api.getChatMessages().then(data => {
+      setMessages(data.messages || [])
+    }).catch(() => {})
+
+    // 监听新消息
+    const unsub = ws.on('chat', (data) => {
+      const msg = data as unknown as ChatMessage
+      setMessages(prev => [...prev, msg])
+    })
+
+    return unsub
+  }, [])
+
+  useEffect(() => {
+    // 滚动到底部
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const sendMessage = async () => {
+    if (!input.trim() || sending) return
+    setSending(true)
+    try {
+      await api.sendChatMessage('world', input.trim())
+      setInput('')
+    } catch (e) {
+      showToast((e as Error).message, 'error')
+    } finally {
+      setSending(false)
     }
-    setMessages([...messages, newMsg])
-    setInput('')
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -44,13 +59,18 @@ export default function Chat() {
       {isOpen && (
         <>
           <div className="chat-messages">
-            {messages.map(msg => (
-              <div key={msg.id} className={`chat-msg ${msg.user === '系统' ? 'system' : ''}`}>
-                <span className="chat-time">[{msg.time}]</span>
-                <span className="chat-user">{msg.user}:</span>
-                <span className="chat-text">{msg.text}</span>
-              </div>
-            ))}
+            {messages.length === 0 ? (
+              <div className="chat-msg system">暂无消息</div>
+            ) : (
+              messages.map(msg => (
+                <div key={msg.id} className="chat-msg">
+                  <span className="chat-time">[{new Date(msg.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}]</span>
+                  <span className="chat-user">{msg.nickname || msg.user?.nickname || '匿名'}:</span>
+                  <span className="chat-text">{msg.content}</span>
+                </div>
+              ))
+            )}
+            <div ref={messagesEndRef} />
           </div>
           <div className="chat-input-box">
             <input
@@ -60,8 +80,11 @@ export default function Chat() {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
+              disabled={sending}
             />
-            <button className="chat-send" onClick={sendMessage}>发送</button>
+            <button className="chat-send" onClick={sendMessage} disabled={sending}>
+              {sending ? '...' : '发送'}
+            </button>
           </div>
         </>
       )}

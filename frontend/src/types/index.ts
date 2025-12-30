@@ -163,10 +163,14 @@ export interface UserAchievement {
 export interface ChatMessage {
   id: number
   user_id: number
-  nickname: string
-  avatar: string
+  nickname?: string
+  avatar?: string
   content: string
   created_at: string
+  user?: {
+    nickname: string
+    avatar: string
+  }
 }
 
 // 排行榜

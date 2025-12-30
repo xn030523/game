@@ -46,6 +46,8 @@ CREATE TABLE user_stats (
     login_days INT DEFAULT 0 COMMENT '登录天数',
     consecutive_days INT DEFAULT 0 COMMENT '连续登录天数',
     last_login_date DATE COMMENT '最后登录日期',
+    contribution_points INT DEFAULT 0 COMMENT '贡献点数',
+    achievement_points INT DEFAULT 0 COMMENT '成就点数',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

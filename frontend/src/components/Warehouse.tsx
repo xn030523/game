@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import Modal from './Modal'
 import { useUser } from '../contexts/UserContext'
+import { useToast } from './Toast'
 import { api } from '../services/api'
 import type { Seed } from '../types'
 
@@ -11,6 +12,7 @@ interface WarehouseProps {
 
 export default function Warehouse({ isOpen, onClose }: WarehouseProps) {
   const { inventory, refreshInventory } = useUser()
+  const { showToast } = useToast()
   const [tab, setTab] = useState<'seed' | 'crop'>('seed')
   const [seeds, setSeeds] = useState<Seed[]>([])
   const [selling, setSelling] = useState<number | null>(null)
@@ -30,10 +32,10 @@ export default function Warehouse({ isOpen, onClose }: WarehouseProps) {
     setSelling(cropId)
     try {
       const result = await api.sellCrop(cropId, quantity)
-      alert(`出售成功！获得 ${result.earning} 金币`)
+      showToast(`出售成功！+${result.earning} 金币`, 'success')
       refreshInventory()
     } catch (e) {
-      alert((e as Error).message)
+      showToast((e as Error).message, 'error')
     } finally {
       setSelling(null)
     }

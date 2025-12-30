@@ -463,7 +463,7 @@ func CheckCropMature() error {
 		elapsed := now.Sub(*farm.PlantedAt).Seconds()
 		if int(elapsed) >= farm.Seed.GrowthTime {
 			farm.Status = "mature"
-			farm.Stage = farm.Seed.Stages
+			farm.Stage = farm.Seed.Stages - 1 // 贴图从0开始
 			db.Save(&farm)
 
 			// 推送成熟通知

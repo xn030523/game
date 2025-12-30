@@ -147,6 +147,32 @@ func (h *FarmHandler) SellCrop(c *gin.Context) {
 	})
 }
 
+// RecycleSeed 回收种子（30%价格）
+func (h *FarmHandler) RecycleSeed(c *gin.Context) {
+	userID, _ := c.Get("userID")
+
+	var req struct {
+		SeedID   uint `json:"seed_id" binding:"required"`
+		Quantity int  `json:"quantity" binding:"required,min=1"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	earning, err := h.farmService.RecycleSeed(userID.(uint), req.SeedID, req.Quantity)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "回收成功",
+		"earning": earning,
+	})
+}
+
 // GetInventory 获取仓库
 func (h *FarmHandler) GetInventory(c *gin.Context) {
 	userID, _ := c.Get("userID")

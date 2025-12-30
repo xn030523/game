@@ -51,7 +51,9 @@ func SetupRouter() *gin.Engine {
 		// 公开接口
 		public := v1.Group("")
 		{
-			public.POST("/auth/linuxdo/callback", handler.NewAuthHandler().LinuxdoCallback)
+			authHandler := handler.NewAuthHandler()
+			public.POST("/auth/linuxdo/callback", authHandler.LinuxdoCallback)
+			public.POST("/auth/dev-login", authHandler.DevLogin)
 		}
 
 		// 需要认证的接口
@@ -75,6 +77,7 @@ func SetupRouter() *gin.Engine {
 			auth.POST("/farm/plant", farmHandler.Plant)
 			auth.POST("/farm/harvest", farmHandler.Harvest)
 			auth.POST("/farm/sell", farmHandler.SellCrop)
+			auth.POST("/farm/recycle", farmHandler.RecycleSeed)
 			auth.GET("/farm/inventory", farmHandler.GetInventory)
 
 			// 股票交易所

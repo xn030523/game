@@ -1,26 +1,47 @@
 import { useState } from 'react'
-import { UserProvider } from './contexts/UserContext'
+import { UserProvider, useUser } from './contexts/UserContext'
+import { ToastProvider } from './components/Toast'
 import Game from './components/Game'
 import TopBar from './components/TopBar'
 import Chat from './components/Chat'
 import Warehouse from './components/Warehouse'
 import Market from './components/Market'
 import StockExchange from './components/StockExchange'
+import Login from './components/Login'
 
 export type ModalType = 'warehouse' | 'market' | 'auction' | 'stock' | 'charity' | 'ranking' | 'blackmarket' | null
 
-function App() {
+function GameContent() {
+  const { user, loading, refreshProfile } = useUser()
   const [activeModal, setActiveModal] = useState<ModalType>(null)
 
+  if (loading) {
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#1a4d1a', color: '#fff' }}>加载中...</div>
+  }
+
+  if (!user) {
+    return <Login onSuccess={refreshProfile} />
+  }
+
   return (
-    <UserProvider>
+    <>
       <TopBar onMenuClick={setActiveModal} />
-      <Game />
+      <Game onOpenMarket={() => setActiveModal('market')} />
       <Chat />
       
       <Warehouse isOpen={activeModal === 'warehouse'} onClose={() => setActiveModal(null)} />
       <Market isOpen={activeModal === 'market'} onClose={() => setActiveModal(null)} />
       <StockExchange isOpen={activeModal === 'stock'} onClose={() => setActiveModal(null)} />
+    </>
+  )
+}
+
+function App() {
+  return (
+    <UserProvider>
+      <ToastProvider>
+        <GameContent />
+      </ToastProvider>
     </UserProvider>
   )
 }

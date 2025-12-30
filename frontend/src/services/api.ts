@@ -56,6 +56,15 @@ class ApiService {
     return data
   }
 
+  async devLogin(username: string) {
+    const data = await this.request<{ token: string; user: User; is_new: boolean }>('/auth/dev-login', {
+      method: 'POST',
+      body: JSON.stringify({ username }),
+    })
+    this.setToken(data.token)
+    return data
+  }
+
   // === 用户 ===
   async getProfile() {
     return this.request<{ user: User; stats: UserStats }>('/user/profile')
@@ -111,6 +120,13 @@ class ApiService {
     return this.request<{ message: string; earning: number }>('/farm/sell', {
       method: 'POST',
       body: JSON.stringify({ crop_id: cropId, quantity }),
+    })
+  }
+
+  async recycleSeed(seedId: number, quantity: number) {
+    return this.request<{ message: string; earning: number }>('/farm/recycle', {
+      method: 'POST',
+      body: JSON.stringify({ seed_id: seedId, quantity }),
     })
   }
 

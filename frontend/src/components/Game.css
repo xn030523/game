@@ -1,0 +1,144 @@
+/* 种植面板 */
+.plant-panel-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 500;
+}
+
+.plant-panel {
+  background: linear-gradient(135deg, #2d1f0f 0%, #3d2914 100%);
+  border: 3px solid #8b5a2b;
+  border-radius: 12px;
+  min-width: 320px;
+  max-width: 500px;
+  max-height: 70vh;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.plant-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  background: linear-gradient(180deg, #5c3a1e 0%, #4a2f18 100%);
+  border-bottom: 2px solid #8b5a2b;
+}
+
+.plant-panel-header h3 {
+  margin: 0;
+  color: #ffd700;
+  font-size: 1.1rem;
+}
+
+.plant-panel-close {
+  background: none;
+  border: none;
+  color: #ddd;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.plant-panel-close:hover {
+  color: #ff6b6b;
+}
+
+.plant-panel-body {
+  padding: 16px;
+  overflow-y: auto;
+  max-height: calc(70vh - 60px);
+}
+
+.plant-panel-empty {
+  text-align: center;
+  color: #888;
+  padding: 20px;
+}
+
+.plant-panel-empty p {
+  margin: 0 0 16px 0;
+}
+
+.plant-panel-btn {
+  padding: 10px 24px;
+  border: 2px solid #4caf50;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #2e7d32 0%, #1b5e20 100%);
+  color: #fff;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.plant-panel-btn:hover {
+  background: linear-gradient(180deg, #388e3c 0%, #2e7d32 100%);
+  transform: translateY(-2px);
+}
+
+.plant-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.plant-panel-item {
+  background: rgba(0, 0, 0, 0.3);
+  border: 2px solid #5c3a1e;
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.plant-panel-item:hover {
+  background: rgba(139, 90, 43, 0.3);
+  border-color: #8b5a2b;
+  transform: translateY(-2px);
+}
+
+.plant-panel-item img {
+  width: 40px;
+  height: 40px;
+  image-rendering: pixelated;
+  margin-bottom: 6px;
+}
+
+.plant-panel-item-name {
+  color: #fff;
+  font-size: 0.75rem;
+  text-align: center;
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plant-panel-item-qty {
+  color: #ffd700;
+  font-size: 0.7rem;
+  margin-top: 2px;
+}
+
+@media (max-width: 500px) {
+  .plant-panel {
+    min-width: auto;
+    width: 90vw;
+  }
+  
+  .plant-panel-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}

@@ -44,7 +44,7 @@ func (s *AchievementService) UpdateAchievementProgress(userID uint, conditionTyp
 			continue
 		}
 
-		ua, err := s.achievementRepo.GetUserAchievement(userID, achievement.ID)
+		ua, err := s.achievementRepo.GetUserAchievementByID(userID, achievement.ID)
 		if err != nil {
 			// 创建用户成就记录
 			ua = &models.UserAchievement{
@@ -75,7 +75,7 @@ func (s *AchievementService) UpdateAchievementProgress(userID uint, conditionTyp
 
 // ClaimAchievementReward 领取成就奖励
 func (s *AchievementService) ClaimAchievementReward(userID, achievementID uint) error {
-	ua, err := s.achievementRepo.GetUserAchievement(userID, achievementID)
+	ua, err := s.achievementRepo.GetUserAchievementByID(userID, achievementID)
 	if err != nil {
 		return errors.New("成就不存在")
 	}

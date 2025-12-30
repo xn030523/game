@@ -4,9 +4,15 @@ import (
 	"errors"
 	"farm-game/models"
 	"farm-game/repository"
+	"farm-game/ws"
 	"math/rand"
 	"time"
 )
+
+// getWSHub 获取 WebSocket Hub
+func getWSHub() *ws.Hub {
+	return ws.GameHub
+}
 
 type SocialService struct {
 	socialRepo *repository.SocialRepository
@@ -269,11 +275,40 @@ func (s *SocialService) SendChatMessage(userID uint, channel, content string) er
 		return errors.New("消息过长")
 	}
 
+	// 获取用户信息
+	user, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		return errors.New("用户不存在")
+	}
+
 	message := &models.ChatMessage{
 		UserID:  userID,
 		Channel: channel,
 		Content: content,
 	}
 
-	return s.socialRepo.CreateChatMessage(message)
+	err = s.socialRepo.CreateChatMessage(message)
+	if err != nil {
+		return err
+	}
+
+	// 广播消息到 WebSocket
+	s.broadcastChatMessage(message, user)
+
+	return nil
+}
+
+// broadcastChatMessage 广播聊天消息
+func (s *SocialService) broadcastChatMessage(msg *models.ChatMessage, user *models.User) {
+	if wsHub := getWSHub(); wsHub != nil {
+		wsHub.Broadcast(ws.NewMessage("chat", map[string]interface{}{
+			"id":         msg.ID,
+			"user_id":    msg.UserID,
+			"nickname":   user.Nickname,
+			"avatar":     user.Avatar,
+			"channel":    msg.Channel,
+			"content":    msg.Content,
+			"created_at": msg.CreatedAt,
+		}))
+	}
 }

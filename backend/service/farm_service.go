@@ -58,7 +58,7 @@ func (s *FarmService) updateFarmStatus(farm *models.UserFarm) {
 	
 	newStage := int(elapsed / stageTime)
 	if newStage >= seed.Stages {
-		farm.Stage = seed.Stages
+		farm.Stage = seed.Stages - 1 // 贴图从0开始，成熟是最后一张
 		farm.Status = "mature"
 	} else {
 		farm.Stage = newStage
@@ -108,10 +108,27 @@ func (s *FarmService) BuySeed(userID uint, seedID uint, quantity int) error {
 
 // Plant 种植
 func (s *FarmService) Plant(userID uint, slotIndex int, seedID uint) error {
-	// 检查农田
+	// 检查用户农田数量
+	user, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		return errors.New("用户不存在")
+	}
+	if slotIndex >= user.FarmSlots {
+		return errors.New("农田格子不存在")
+	}
+
+	// 获取或创建农田
 	farm, err := s.farmRepo.GetUserFarmBySlot(userID, slotIndex)
 	if err != nil {
-		return errors.New("农田不存在")
+		// 农田不存在，自动创建
+		farm = &models.UserFarm{
+			UserID:    userID,
+			SlotIndex: slotIndex,
+			Status:    "empty",
+		}
+		if err := s.farmRepo.CreateUserFarm(farm); err != nil {
+			return errors.New("创建农田失败")
+		}
 	}
 
 	if farm.Status != "empty" {
@@ -185,8 +202,19 @@ func (s *FarmService) Harvest(userID uint, slotIndex int) (*HarvestResult, error
 	stats, _ := s.userRepo.GetUserStats(userID)
 	if stats != nil {
 		stats.TotalHarvested++
+		stats.ContributionPoints += 10 // 每次收获+10贡献值
 		s.userRepo.UpdateUserStats(stats)
 	}
+
+	// 同步更新用户表的贡献值
+	user, _ := s.userRepo.FindByID(userID)
+	if user != nil {
+		user.Contribution += 10
+		s.userRepo.Update(user)
+	}
+
+	// 检查成就
+	s.checkHarvestAchievements(userID, stats)
 
 	return &HarvestResult{
 		CropID:   crop.ID,
@@ -246,7 +274,80 @@ func (s *FarmService) SellCrop(userID uint, cropID uint, quantity int) (float64,
 	return totalEarning, nil
 }
 
+// RecycleSeed 回收种子（30%价格）
+func (s *FarmService) RecycleSeed(userID uint, seedID uint, quantity int) (float64, error) {
+	// 检查仓库
+	item, err := s.farmRepo.GetUserInventoryItem(userID, "seed", seedID)
+	if err != nil || item.Quantity < quantity {
+		return 0, errors.New("种子数量不足")
+	}
+
+	seed, err := s.farmRepo.GetSeedByID(seedID)
+	if err != nil {
+		return 0, errors.New("种子不存在")
+	}
+
+	// 回收价格是原价的30%
+	recyclePrice := seed.BasePrice * 0.3
+	totalEarning := recyclePrice * float64(quantity)
+
+	// 扣除种子
+	if err := s.farmRepo.RemoveFromInventory(userID, "seed", seedID, quantity); err != nil {
+		return 0, err
+	}
+
+	// 增加金币
+	if err := s.userRepo.UpdateGold(userID, totalEarning); err != nil {
+		return 0, err
+	}
+
+	return totalEarning, nil
+}
+
 // GetUserInventory 获取用户仓库
 func (s *FarmService) GetUserInventory(userID uint) ([]models.UserInventory, error) {
 	return s.farmRepo.GetUserInventory(userID)
+}
+
+// checkHarvestAchievements 检查收获相关成就
+func (s *FarmService) checkHarvestAchievements(userID uint, stats *models.UserStats) {
+	if stats == nil {
+		return
+	}
+	
+	achievementRepo := repository.NewAchievementRepository()
+	
+	// 检查收获次数成就
+	harvestAchievements := []struct {
+		code  string
+		count int
+	}{
+		{"first_harvest", 1},
+		{"harvest_10", 10},
+		{"harvest_100", 100},
+		{"harvest_1000", 1000},
+	}
+	
+	for _, a := range harvestAchievements {
+		if stats.TotalHarvested >= a.count {
+			// 检查是否已获得
+			_, err := achievementRepo.GetUserAchievement(userID, a.code)
+			if err != nil {
+				// 未获得，尝试解锁
+				achievement, err := achievementRepo.GetAchievementByCode(a.code)
+				if err == nil {
+					achievementRepo.UnlockAchievement(userID, achievement.ID)
+					// 增加成就点数
+					stats.AchievementPoints += achievement.Points
+					s.userRepo.UpdateUserStats(stats)
+					// 同步更新用户表
+					user, _ := s.userRepo.FindByID(userID)
+					if user != nil {
+						user.AchievementPoints += achievement.Points
+						s.userRepo.Update(user)
+					}
+				}
+			}
+		}
+	}
 }
