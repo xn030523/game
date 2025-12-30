@@ -1,7 +1,11 @@
-import { Game } from './game/Game'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+
+
+
 
 function App() {
-  return <Game />
+  return (
+  )
 }
 
 export default App
