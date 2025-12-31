@@ -5,6 +5,7 @@ import (
 	"farm-game/models"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type MarketRepository struct {
@@ -18,7 +19,7 @@ func NewMarketRepository() *MarketRepository {
 // GetMarketStatus 获取市场状态
 func (r *MarketRepository) GetMarketStatus(itemType string, itemID uint) (*models.MarketStatus, error) {
 	var status models.MarketStatus
-	err := r.db.Where("item_type = ? AND item_id = ?", itemType, itemID).First(&status).Error
+	err := r.db.Session(&gorm.Session{Logger: logger.Discard}).Where("item_type = ? AND item_id = ?", itemType, itemID).First(&status).Error
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +61,7 @@ func (r *MarketRepository) GetActiveMarketEvents() ([]models.MarketEvent, error)
 // GetPriceRule 获取价格规则
 func (r *MarketRepository) GetPriceRule(itemType string, itemID uint) (*models.PriceRule, error) {
 	var rule models.PriceRule
-	err := r.db.Where("item_type = ? AND item_id = ?", itemType, itemID).First(&rule).Error
+	err := r.db.Session(&gorm.Session{Logger: logger.Discard}).Where("item_type = ? AND item_id = ?", itemType, itemID).First(&rule).Error
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +71,7 @@ func (r *MarketRepository) GetPriceRule(itemType string, itemID uint) (*models.P
 // UpdateBuyVolume 更新买入量（需求增加，价格上涨）
 func (r *MarketRepository) UpdateBuyVolume(itemType string, itemID uint, quantity int) {
 	var status models.MarketStatus
-	err := r.db.Where("item_type = ? AND item_id = ?", itemType, itemID).First(&status).Error
+	err := r.db.Session(&gorm.Session{Logger: logger.Discard}).Where("item_type = ? AND item_id = ?", itemType, itemID).First(&status).Error
 	if err != nil {
 		// 不存在则创建
 		status = models.MarketStatus{
@@ -99,7 +100,7 @@ func (r *MarketRepository) UpdateBuyVolume(itemType string, itemID uint, quantit
 // UpdateSellVolume 更新卖出量（供给增加，价格下跌）
 func (r *MarketRepository) UpdateSellVolume(itemType string, itemID uint, quantity int) {
 	var status models.MarketStatus
-	err := r.db.Where("item_type = ? AND item_id = ?", itemType, itemID).First(&status).Error
+	err := r.db.Session(&gorm.Session{Logger: logger.Discard}).Where("item_type = ? AND item_id = ?", itemType, itemID).First(&status).Error
 	if err != nil {
 		// 不存在则创建
 		status = models.MarketStatus{

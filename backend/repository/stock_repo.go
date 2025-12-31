@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type StockRepository struct {
@@ -68,7 +69,7 @@ func (r *StockRepository) GetStockPrices(stockID uint, periodType string, limit 
 // GetTodayKLine 获取今天的K线数据
 func (r *StockRepository) GetTodayKLine(stockID uint, date string) (*models.StockPrice, error) {
 	var price models.StockPrice
-	err := r.db.Where("stock_id = ? AND period_type = '1d' AND DATE(recorded_at) = ?", stockID, date).First(&price).Error
+	err := r.db.Session(&gorm.Session{Logger: logger.Discard}).Where("stock_id = ? AND period_type = '1d' AND DATE(recorded_at) = ?", stockID, date).First(&price).Error
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +121,7 @@ func (r *StockRepository) GetUserStocks(userID uint) ([]models.UserStock, error)
 // GetUserStock 获取用户指定股票持仓
 func (r *StockRepository) GetUserStock(userID, stockID uint) (*models.UserStock, error) {
 	var stock models.UserStock
-	err := r.db.Where("user_id = ? AND stock_id = ?", userID, stockID).First(&stock).Error
+	err := r.db.Session(&gorm.Session{Logger: logger.Discard}).Where("user_id = ? AND stock_id = ?", userID, stockID).First(&stock).Error
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +198,7 @@ func (r *StockRepository) GetUserStockOrders(userID uint, limit int) ([]models.S
 // GetUserStockStats 获取用户股票统计
 func (r *StockRepository) GetUserStockStats(userID uint) (*models.UserStockStats, error) {
 	var stats models.UserStockStats
-	err := r.db.Where("user_id = ?", userID).First(&stats).Error
+	err := r.db.Session(&gorm.Session{Logger: logger.Discard}).Where("user_id = ?", userID).First(&stats).Error
 	if err != nil {
 		return nil, err
 	}

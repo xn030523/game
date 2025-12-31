@@ -5,6 +5,7 @@ import (
 	"farm-game/models"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type FarmRepository struct {
@@ -126,7 +127,7 @@ func (r *FarmRepository) GetUserInventory(userID uint) ([]models.UserInventory, 
 // GetUserInventoryItem 获取用户仓库指定物品
 func (r *FarmRepository) GetUserInventoryItem(userID uint, itemType string, itemID uint) (*models.UserInventory, error) {
 	var item models.UserInventory
-	err := r.db.Where("user_id = ? AND item_type = ? AND item_id = ?", userID, itemType, itemID).First(&item).Error
+	err := r.db.Session(&gorm.Session{Logger: logger.Discard}).Where("user_id = ? AND item_type = ? AND item_id = ?", userID, itemType, itemID).First(&item).Error
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +137,7 @@ func (r *FarmRepository) GetUserInventoryItem(userID uint, itemType string, item
 // AddToInventory 添加物品到仓库
 func (r *FarmRepository) AddToInventory(userID uint, itemType string, itemID uint, quantity int) error {
 	var item models.UserInventory
-	err := r.db.Where("user_id = ? AND item_type = ? AND item_id = ?", userID, itemType, itemID).First(&item).Error
+	err := r.db.Session(&gorm.Session{Logger: logger.Discard}).Where("user_id = ? AND item_type = ? AND item_id = ?", userID, itemType, itemID).First(&item).Error
 	
 	if err == gorm.ErrRecordNotFound {
 		item = models.UserInventory{
