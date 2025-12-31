@@ -105,3 +105,18 @@ func (r *AuctionRepository) SearchAuctions(itemType string, keyword string) ([]m
 	err := query.Preload("Seller").Order("end_at ASC").Find(&auctions).Error
 	return auctions, err
 }
+
+// GetUserAuctionHistory 获取用户拍卖历史（已完成的）
+func (r *AuctionRepository) GetUserAuctionHistory(userID uint, limit int) ([]models.Auction, []models.Auction, error) {
+	// 我卖出的（已成交）
+	var sold []models.Auction
+	r.db.Where("seller_id = ? AND status = ?", userID, "sold").
+		Preload("Bidder").Order("created_at DESC").Limit(limit).Find(&sold)
+
+	// 我买到的（我是最高出价者且已成交）
+	var bought []models.Auction
+	r.db.Where("highest_bidder = ? AND status = ?", userID, "sold").
+		Preload("Seller").Order("created_at DESC").Limit(limit).Find(&bought)
+
+	return sold, bought, nil
+}

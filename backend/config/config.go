@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 	_ "github.com/go-sql-driver/mysql"
@@ -74,9 +75,10 @@ func InitDB() {
 	if err != nil {
 		log.Fatal("获取数据库连接池失败:", err)
 	}
-	sqlDB.SetMaxIdleConns(20)
+	sqlDB.SetMaxIdleConns(10)
 	sqlDB.SetMaxOpenConns(100)
-	sqlDB.SetConnMaxLifetime(30 * 60 * 1000000000)
+	sqlDB.SetConnMaxLifetime(5 * time.Minute)  // 连接最大生存5分钟
+	sqlDB.SetConnMaxIdleTime(3 * time.Minute)  // 空闲连接最大3分钟
 
 	log.Println("数据库连接成功")
 

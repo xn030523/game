@@ -271,6 +271,23 @@ func (s *AuctionService) GetMyAuctions(userID uint) ([]models.Auction, []models.
 	return selling, bidding, nil
 }
 
+// GetAuctionHistory 获取拍卖历史记录
+func (s *AuctionService) GetAuctionHistory(userID uint, limit int) ([]models.Auction, []models.Auction, error) {
+	sold, bought, err := s.auctionRepo.GetUserAuctionHistory(userID, limit)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for i := range sold {
+		sold[i].ItemName = s.getItemName(sold[i].ItemType, sold[i].ItemID)
+	}
+	for i := range bought {
+		bought[i].ItemName = s.getItemName(bought[i].ItemType, bought[i].ItemID)
+	}
+
+	return sold, bought, nil
+}
+
 // ProcessExpiredAuctions 处理过期拍卖（定时任务调用）
 func (s *AuctionService) ProcessExpiredAuctions() {
 	auctions, _ := s.auctionRepo.GetExpiredAuctions()

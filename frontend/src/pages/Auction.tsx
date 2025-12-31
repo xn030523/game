@@ -11,7 +11,8 @@ export default function Auction() {
   const { refreshProfile } = useUser()
   const [auctions, setAuctions] = useState<AuctionType[]>([])
   const [myAuctions, setMyAuctions] = useState<{ selling: AuctionType[], bidding: AuctionType[] }>({ selling: [], bidding: [] })
-  const [tab, setTab] = useState<'market' | 'my' | 'create'>('market')
+  const [history, setHistory] = useState<{ sold: AuctionType[], bought: AuctionType[] }>({ sold: [], bought: [] })
+  const [tab, setTab] = useState<'market' | 'my' | 'create' | 'history'>('market')
   const [loading, setLoading] = useState(false)
   const [inventory, setInventory] = useState<InventoryItem[]>([])
   
@@ -78,10 +79,23 @@ export default function Auction() {
     }
   }
 
-  const handleTabChange = (newTab: 'market' | 'my' | 'create') => {
+  const handleTabChange = (newTab: 'market' | 'my' | 'create' | 'history') => {
     setTab(newTab)
     if (newTab === 'my') loadMyAuctions()
     if (newTab === 'create') loadInventory()
+    if (newTab === 'history') loadHistory()
+  }
+
+  const loadHistory = async () => {
+    setLoading(true)
+    try {
+      const data = await api.getAuctionHistory()
+      setHistory({ sold: data.sold || [], bought: data.bought || [] })
+    } catch (e) {
+      showToast((e as Error).message, 'error')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleCreateAuction = async () => {
@@ -164,6 +178,7 @@ export default function Auction() {
           <button className={tab === 'market' ? 'active' : ''} onClick={() => handleTabChange('market')}>拍卖大厅</button>
           <button className={tab === 'my' ? 'active' : ''} onClick={() => handleTabChange('my')}>我的拍卖</button>
           <button className={tab === 'create' ? 'active' : ''} onClick={() => handleTabChange('create')}>上架物品</button>
+          <button className={tab === 'history' ? 'active' : ''} onClick={() => handleTabChange('history')}>历史记录</button>
         </div>
       </div>
 
@@ -292,6 +307,60 @@ export default function Auction() {
             </select>
           </div>
           <button className="create-btn" onClick={handleCreateAuction}>上架拍卖</button>
+        </div>
+      )}
+
+      {tab === 'history' && (
+        <div className="history-section">
+          {loading ? <div className="loading">加载中...</div> : (
+            <>
+              <div className="history-group">
+                <h3>📤 我卖出的</h3>
+                {history.sold.length === 0 ? (
+                  <p className="empty-tip">暂无卖出记录</p>
+                ) : (
+                  <div className="history-list">
+                    {history.sold.map(a => (
+                      <div key={a.id} className="history-item sold">
+                        <div className="history-info">
+                          <span className="item-name">{a.item_name || `物品#${a.item_id}`}</span>
+                          <span className="quantity">x{a.quantity}</span>
+                        </div>
+                        <div className="history-detail">
+                          <span>买家: {a.bidder?.nickname || '未知'}</span>
+                          <span className="price">💰 {a.current_price.toFixed(2)}</span>
+                        </div>
+                        <div className="history-time">{new Date(a.created_at).toLocaleString()}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="history-group">
+                <h3>📥 我买到的</h3>
+                {history.bought.length === 0 ? (
+                  <p className="empty-tip">暂无购买记录</p>
+                ) : (
+                  <div className="history-list">
+                    {history.bought.map(a => (
+                      <div key={a.id} className="history-item bought">
+                        <div className="history-info">
+                          <span className="item-name">{a.item_name || `物品#${a.item_id}`}</span>
+                          <span className="quantity">x{a.quantity}</span>
+                        </div>
+                        <div className="history-detail">
+                          <span>卖家: {a.seller?.nickname || '未知'}</span>
+                          <span className="price">💰 {a.current_price.toFixed(2)}</span>
+                        </div>
+                        <div className="history-time">{new Date(a.created_at).toLocaleString()}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

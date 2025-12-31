@@ -153,3 +153,22 @@ func (h *AuctionHandler) GetMyAuctions(c *gin.Context) {
 		"bidding": bidding,
 	})
 }
+
+// GetAuctionHistory 获取拍卖历史记录
+func (h *AuctionHandler) GetAuctionHistory(c *gin.Context) {
+	uid, _ := c.Get("userID")
+	userID := uid.(uint)
+	limitStr := c.DefaultQuery("limit", "50")
+	limit, _ := strconv.Atoi(limitStr)
+
+	sold, bought, err := h.auctionService.GetAuctionHistory(userID, limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"sold":   sold,
+		"bought": bought,
+	})
+}

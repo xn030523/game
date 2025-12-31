@@ -229,3 +229,77 @@
   color: #aaa;
   padding: 40px;
 }
+
+/* 历史记录样式 */
+.history-section {
+  padding: 10px 0;
+}
+
+.history-group {
+  margin-bottom: 20px;
+}
+
+.history-group h3 {
+  color: #ffd700;
+  margin-bottom: 12px;
+  font-size: 16px;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.history-item {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  padding: 12px;
+  border-left: 4px solid #666;
+}
+
+.history-item.sold {
+  border-left-color: #4caf50;
+}
+
+.history-item.bought {
+  border-left-color: #2196f3;
+}
+
+.history-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.history-info .item-name {
+  color: #fff;
+  font-weight: bold;
+}
+
+.history-info .quantity {
+  color: #aaa;
+}
+
+.history-detail {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #ccc;
+}
+
+.history-detail .price {
+  color: #ffd700;
+}
+
+.history-time {
+  font-size: 12px;
+  color: #888;
+  margin-top: 6px;
+}
+
+.empty-tip {
+  color: #888;
+  text-align: center;
+  padding: 20px;
+}

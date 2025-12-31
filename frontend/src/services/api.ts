@@ -234,6 +234,10 @@ class ApiService {
     return this.request<{ selling: Auction[]; bidding: Auction[] }>('/auction/my')
   }
 
+  async getAuctionHistory(limit = 50) {
+    return this.request<{ sold: Auction[]; bought: Auction[] }>(`/auction/history?limit=${limit}`)
+  }
+
   // === 黑市 ===
   async getBlackmarket() {
     return this.request<{ batch: unknown; items: BlackmarketItem[]; next_refresh: string }>('/blackmarket')

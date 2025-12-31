@@ -107,6 +107,7 @@ func SetupRouter() *gin.Engine {
 			auth.POST("/auction/:id/buyout", auctionHandler.Buyout)
 			auth.POST("/auction/:id/cancel", auctionHandler.CancelAuction)
 			auth.GET("/auction/my", auctionHandler.GetMyAuctions)
+			auth.GET("/auction/history", auctionHandler.GetAuctionHistory)
 
 			// 黑市
 			blackmarketHandler := handler.NewBlackmarketHandler()
