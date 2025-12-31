@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { api } from '../services/api'
+import { ws } from '../services/websocket'
 import { useToast } from '../components/Toast'
 import type { Auction as AuctionType, InventoryItem } from '../types'
 import './Auction.css'
@@ -25,9 +26,25 @@ export default function Auction() {
   // 出价表单
   const [bidPrice, setBidPrice] = useState<{ [key: number]: string }>({})
 
+  // WebSocket 实时更新
+  const handleAuctionUpdate = useCallback((raw: Record<string, unknown>) => {
+    const data = raw as { auction_id: number; current_price: number; bid_count: number; status: string; end_at: string }
+    setAuctions(prev => prev.map(a => 
+      a.id === data.auction_id 
+        ? { ...a, current_price: data.current_price, bid_count: data.bid_count, status: data.status as AuctionType['status'], end_at: data.end_at }
+        : a
+    ))
+    setMyAuctions(prev => ({
+      selling: prev.selling.map(a => a.id === data.auction_id ? { ...a, current_price: data.current_price, bid_count: data.bid_count, status: data.status as AuctionType['status'] } : a),
+      bidding: prev.bidding.map(a => a.id === data.auction_id ? { ...a, current_price: data.current_price, bid_count: data.bid_count } : a)
+    }))
+  }, [])
+
   useEffect(() => {
     loadAuctions()
-  }, [])
+    ws.on('auction_update', handleAuctionUpdate)
+    return () => ws.off('auction_update', handleAuctionUpdate)
+  }, [handleAuctionUpdate])
 
   const loadAuctions = async () => {
     setLoading(true)

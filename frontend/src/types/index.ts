@@ -86,6 +86,19 @@ export interface Stock {
   change_percent: number
   trend: 'up' | 'down' | 'stable'
   max_leverage: number
+  total_shares: number
+  available_shares: number
+}
+
+export interface KLineData {
+  id: number
+  stock_id: number
+  price: number
+  open_price: number
+  high_price: number
+  low_price: number
+  volume: number
+  recorded_at: string
 }
 
 export interface UserStock {

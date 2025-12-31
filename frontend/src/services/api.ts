@@ -1,4 +1,4 @@
-import type { User, UserStats, Seed, Crop, Farm, InventoryItem, Stock, UserStock, LeveragePosition, Auction, BlackmarketItem, Friend, Achievement, UserAchievement, ChatMessage, RankingItem } from '../types'
+import type { User, UserStats, Seed, Crop, Farm, InventoryItem, Stock, UserStock, LeveragePosition, KLineData, Auction, BlackmarketItem, Friend, Achievement, UserAchievement, ChatMessage, RankingItem } from '../types'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1'
 
@@ -141,6 +141,19 @@ class ApiService {
 
   async getStock(id: number) {
     return this.request<{ stock: Stock }>(`/stock/${id}`)
+  }
+
+  async getKLine(stockId: number, period = '1d', limit = 30) {
+    return this.request<{ prices: KLineData[] }>(`/stock/${stockId}/kline?period=${period}&limit=${limit}`)
+  }
+
+  async getStockNews(limit = 20) {
+    return this.request<{ news: { id: number; stock_code: string; stock_name: string; title: string; effect: number; created_at: string }[] }>(`/stock/news?limit=${limit}`)
+  }
+
+  async getTodayProfit(date = '') {
+    const url = date ? `/stock/today-profit?date=${date}` : '/stock/today-profit'
+    return this.request<{ profits: { id: number; stock_name: string; amount: number; change_percent: number; shares: number; created_at: string }[]; total: number }>(url)
   }
 
   async buyStock(stockId: number, shares: number) {

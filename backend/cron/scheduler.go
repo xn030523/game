@@ -61,6 +61,18 @@ func registerTasks() {
 	// 股票强平检查 - 每30秒
 	scheduler.Register("liquidation_check", 30*time.Second, CheckLiquidations)
 
+	// 股票实时波动 - 每3秒
+	scheduler.Register("stock_tick", 3*time.Second, StockTick)
+
+	// 股票随机新闻事件 - 每1分钟
+	scheduler.Register("stock_news", 1*time.Minute, StockNewsEvent)
+
+	// 股息分红 - 每10分钟
+	scheduler.Register("stock_dividend", 10*time.Minute, StockDividend)
+
+	// 内幕消息 - 每3分钟
+	scheduler.Register("insider_tip", 3*time.Minute, InsiderTip)
+
 	// 作物成熟检查 - 每1分钟
 	scheduler.Register("crop_mature_check", 1*time.Minute, CheckCropMature)
 

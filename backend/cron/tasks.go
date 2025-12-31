@@ -4,6 +4,7 @@ import (
 	"farm-game/config"
 	"farm-game/models"
 	"farm-game/ws"
+	"fmt"
 	"log"
 	"math"
 	"math/rand"
@@ -113,9 +114,9 @@ func RefreshBlackmarket() error {
 	db.Model(&models.BlackmarketBatch{}).Where("end_at < ?", time.Now()).Update("is_active", false)
 
 	// 检查是否有活跃批次
-	var activeBatch models.BlackmarketBatch
-	err := db.Where("is_active = ? AND end_at > ?", true, time.Now()).First(&activeBatch).Error
-	if err == nil {
+	var count int64
+	db.Model(&models.BlackmarketBatch{}).Where("is_active = ? AND end_at > ?", true, time.Now()).Count(&count)
+	if count > 0 {
 		return nil // 还有活跃批次，不刷新
 	}
 
@@ -427,5 +428,400 @@ func CleanupExpiredData() error {
 	db.Where("created_at < ?", sevenDaysAgo).Delete(&models.ChatMessage{})
 
 	log.Println("过期数据清理完成")
+	return nil
+}
+
+// StockTick 股票实时波动（每3秒）
+func StockTick() error {
+	db := config.GetDB()
+
+	var stocks []models.Stock
+	if err := db.Where("is_active = ?", true).Find(&stocks).Error; err != nil {
+		return err
+	}
+
+	for _, stock := range stocks {
+		// 基于波动率的随机波动（-0.3% ~ +0.3%）
+		volatility := stock.Volatility
+		if volatility == 0 {
+			volatility = 0.05
+		}
+		change := (rand.Float64() - 0.5) * volatility * 0.1
+		newPrice := stock.CurrentPrice * (1 + change)
+
+		// 做市商机制：价格偏离基准价超过80%时强制回调
+		deviation := (newPrice - stock.BasePrice) / stock.BasePrice
+		if deviation > 0.8 {
+			// 价格过高，强制回调
+			newPrice = newPrice * 0.95
+		} else if deviation < -0.8 {
+			// 价格过低，强制拉升
+			newPrice = newPrice * 1.05
+		}
+
+		// 限制在价格区间内
+		if newPrice < stock.PriceMin {
+			newPrice = stock.PriceMin
+		}
+		if newPrice > stock.PriceMax {
+			newPrice = stock.PriceMax
+		}
+
+		// 计算涨跌幅
+		var changePercent float64
+		if stock.OpenPrice != nil && *stock.OpenPrice > 0 {
+			changePercent = (newPrice - *stock.OpenPrice) / *stock.OpenPrice * 100
+		}
+
+		// 更新最高最低价
+		if stock.HighPrice == nil || newPrice > *stock.HighPrice {
+			stock.HighPrice = &newPrice
+		}
+		if stock.LowPrice == nil || newPrice < *stock.LowPrice {
+			stock.LowPrice = &newPrice
+		}
+
+		stock.CurrentPrice = newPrice
+		stock.ChangePercent = changePercent
+		db.Save(&stock)
+
+		// 更新今日K线
+		today := time.Now().Format("2006-01-02")
+		var kline models.StockPrice
+		err := db.Where("stock_id = ? AND period_type = '1d' AND DATE(recorded_at) = ?", stock.ID, today).First(&kline).Error
+		if err == nil {
+			// 更新现有K线
+			kline.Price = newPrice
+			if kline.HighPrice == nil || newPrice > *kline.HighPrice {
+				kline.HighPrice = &newPrice
+			}
+			if kline.LowPrice == nil || newPrice < *kline.LowPrice {
+				kline.LowPrice = &newPrice
+			}
+			db.Save(&kline)
+		}
+
+		// WebSocket 推送
+		if ws.GameHub != nil {
+			ws.GameHub.Broadcast(ws.NewMessage(ws.MsgTypeStockPrice, map[string]interface{}{
+				"stock_id":       stock.ID,
+				"code":           stock.Code,
+				"current_price":  newPrice,
+				"change_percent": changePercent,
+			}))
+		}
+	}
+	return nil
+}
+
+// 按股票代码分类的新闻
+var stockNewsByCode = map[string][]struct {
+	Title  string
+	Effect float64
+}{
+	"FARM": {
+		{"农业部发布扶持政策，农场科技受益！", 0.06},
+		{"智慧农业项目获政府补贴", 0.05},
+		{"农场科技与大型超市签订供货协议", 0.07},
+		{"农场设备老化，维护成本上升", -0.04},
+		{"农业用地政策收紧，扩张受阻", -0.05},
+		{"机构看好农场科技，大举买入", 0.04},
+	},
+	"SEED": {
+		{"种子集团获得重大专利，股价飙升！", 0.08},
+		{"新品种种子通过国家认证", 0.06},
+		{"种子出口订单大增", 0.05},
+		{"种子质量问题遭投诉", -0.06},
+		{"竞争对手推出低价种子", -0.04},
+		{"种子集团研发投入加大", 0.03},
+	},
+	"CROP": {
+		{"国际粮价上涨，作物期货走强", 0.07},
+		{"丰收季来临，作物供应充足", -0.03},
+		{"干旱预警：作物产量或受影响", 0.06},
+		{"暴雨灾害影响收成", -0.05},
+		{"作物出口关税下调", 0.04},
+		{"国际市场需求疲软", -0.04},
+	},
+	"GOLD": {
+		{"黄金价格创新高，矿业股受益", 0.08},
+		{"央行增持黄金储备", 0.06},
+		{"金矿发现新矿脉，产能提升", 0.07},
+		{"开采成本上升，利润承压", -0.05},
+		{"黄金需求季节性下降", -0.04},
+		{"国际金价震荡下行", -0.06},
+	},
+	"TECH": {
+		{"科技创新获国家奖励，股价上扬", 0.07},
+		{"新技术专利获批，市场看好", 0.06},
+		{"与知名企业达成战略合作", 0.08},
+		{"核心技术人员离职", -0.05},
+		{"研发项目延期，进度落后", -0.04},
+		{"科技产品销量不及预期", -0.06},
+	},
+}
+
+// StockNewsEvent 随机新闻事件（每2分钟）
+func StockNewsEvent() error {
+	// 50%概率触发新闻
+	if rand.Float64() > 0.5 {
+		return nil
+	}
+
+	db := config.GetDB()
+
+	var stocks []models.Stock
+	if err := db.Where("is_active = ?", true).Find(&stocks).Error; err != nil {
+		return err
+	}
+	if len(stocks) == 0 {
+		return nil
+	}
+
+	// 随机选择一个股票
+	stock := stocks[rand.Intn(len(stocks))]
+	
+	// 获取该股票对应的新闻列表
+	newsList, ok := stockNewsByCode[stock.Code]
+	if !ok || len(newsList) == 0 {
+		return nil
+	}
+	
+	// 6亏4赚：60%概率选利空新闻
+	var badNews, goodNews []struct{ Title string; Effect float64 }
+	for _, n := range newsList {
+		if n.Effect < 0 {
+			badNews = append(badNews, n)
+		} else {
+			goodNews = append(goodNews, n)
+		}
+	}
+	
+	var news struct{ Title string; Effect float64 }
+	if rand.Float64() < 0.6 && len(badNews) > 0 {
+		news = badNews[rand.Intn(len(badNews))]
+	} else if len(goodNews) > 0 {
+		news = goodNews[rand.Intn(len(goodNews))]
+	} else {
+		news = newsList[rand.Intn(len(newsList))]
+	}
+
+	// 应用新闻效果
+	newPrice := stock.CurrentPrice * (1 + news.Effect)
+	if newPrice < stock.PriceMin {
+		newPrice = stock.PriceMin
+	}
+	if newPrice > stock.PriceMax {
+		newPrice = stock.PriceMax
+	}
+
+	var changePercent float64
+	if stock.OpenPrice != nil && *stock.OpenPrice > 0 {
+		changePercent = (newPrice - *stock.OpenPrice) / *stock.OpenPrice * 100
+	}
+
+	stock.CurrentPrice = newPrice
+	stock.ChangePercent = changePercent
+	db.Save(&stock)
+
+	// 保存新闻到数据库
+	stockNews := &models.StockNews{
+		StockID:   stock.ID,
+		StockCode: stock.Code,
+		StockName: stock.Name,
+		Title:     news.Title,
+		Effect:    news.Effect,
+	}
+	db.Create(stockNews)
+
+	// 广播新闻和价格更新
+	if ws.GameHub != nil {
+		ws.GameHub.Broadcast(ws.NewMessage("stock_news", map[string]interface{}{
+			"id":         stockNews.ID,
+			"stock_id":   stock.ID,
+			"stock_code": stock.Code,
+			"stock_name": stock.Name,
+			"title":      news.Title,
+			"effect":     news.Effect,
+			"new_price":  newPrice,
+			"created_at": stockNews.CreatedAt,
+		}))
+		ws.GameHub.Broadcast(ws.NewMessage(ws.MsgTypeStockPrice, map[string]interface{}{
+			"stock_id":       stock.ID,
+			"code":           stock.Code,
+			"current_price":  newPrice,
+			"change_percent": changePercent,
+		}))
+	}
+
+	log.Printf("股票新闻: [%s] %s, 价格变动 %.2f%%", stock.Code, news.Title, news.Effect*100)
+	return nil
+}
+
+// StockDividend 股息分红（每10分钟）
+func StockDividend() error {
+	db := config.GetDB()
+
+	// 获取所有持仓
+	var holdings []models.UserStock
+	if err := db.Where("shares > 0").Preload("Stock").Find(&holdings).Error; err != nil {
+		return err
+	}
+
+	for _, h := range holdings {
+		if h.Stock.ID == 0 {
+			continue
+		}
+		
+		// 根据股票涨跌决定盈亏：涨→分红，跌→扣钱
+		changePercent := h.Stock.ChangePercent / 100 // 转为小数
+		if changePercent == 0 {
+			continue
+		}
+		
+		// 盈亏 = 持仓数量 * 当前价格 * 涨跌幅 * 0.1
+		amount := float64(h.Shares) * h.Stock.CurrentPrice * changePercent * 0.1
+		if amount > -0.01 && amount < 0.01 {
+			continue
+		}
+
+		// 更新金币
+		db.Model(&models.User{}).Where("id = ?", h.UserID).Update("gold", gorm.Expr("gold + ?", amount))
+
+		// 保存盈亏记录
+		profit := &models.StockProfit{
+			UserID:        h.UserID,
+			StockID:       h.StockID,
+			StockName:     h.Stock.Name,
+			Amount:        amount,
+			ChangePercent: h.Stock.ChangePercent,
+			Shares:        h.Shares,
+		}
+		db.Create(profit)
+
+		// 通知玩家
+		var message string
+		if amount > 0 {
+			message = fmt.Sprintf("您持有的%s盈利分红 +%.2f 金币", h.Stock.Name, amount)
+		} else {
+			message = fmt.Sprintf("您持有的%s亏损扣除 %.2f 金币", h.Stock.Name, amount)
+		}
+
+		if ws.GameHub != nil {
+			ws.GameHub.SendToUser(fmt.Sprintf("%d", h.UserID), ws.NewMessage("dividend", map[string]interface{}{
+				"id":             profit.ID,
+				"stock_name":     h.Stock.Name,
+				"shares":         h.Shares,
+				"amount":         amount,
+				"change_percent": h.Stock.ChangePercent,
+				"is_profit":      amount > 0,
+				"message":        message,
+				"created_at":     profit.CreatedAt,
+			}))
+		}
+	}
+
+	log.Println("股息分红已发放")
+	return nil
+}
+
+// 内幕消息列表
+var insiderTips = []struct {
+	Template string
+	Effect   float64
+}{
+	{"内幕消息：%s即将发布重大利好，建议买入！", 0.10},
+	{"小道消息：%s可能有大单买入，价格看涨", 0.08},
+	{"传闻：%s正在洽谈重大合作", 0.06},
+	{"警告：%s可能面临监管调查，谨慎持有", -0.08},
+	{"消息：%s大股东计划减持，注意风险", -0.06},
+	{"内部消息：%s业绩可能不及预期", -0.05},
+}
+
+// InsiderTip 内幕消息（每3分钟）
+func InsiderTip() error {
+	// 30%概率触发
+	if rand.Float64() > 0.3 {
+		return nil
+	}
+
+	db := config.GetDB()
+
+	// 获取所有在线用户
+	var users []models.User
+	if err := db.Find(&users).Error; err != nil {
+		return err
+	}
+	if len(users) == 0 {
+		return nil
+	}
+
+	// 随机选择一个用户和一个股票
+	user := users[rand.Intn(len(users))]
+
+	var stocks []models.Stock
+	if err := db.Where("is_active = ?", true).Find(&stocks).Error; err != nil {
+		return err
+	}
+	if len(stocks) == 0 {
+		return nil
+	}
+
+	stock := stocks[rand.Intn(len(stocks))]
+	tip := insiderTips[rand.Intn(len(insiderTips))]
+
+	message := fmt.Sprintf(tip.Template, stock.Name)
+
+	// 发送内幕消息给随机用户
+	if ws.GameHub != nil {
+		ws.GameHub.SendToUser(fmt.Sprintf("%d", user.ID), ws.NewMessage("insider_tip", map[string]interface{}{
+			"stock_id":   stock.ID,
+			"stock_code": stock.Code,
+			"stock_name": stock.Name,
+			"message":    message,
+			"effect":     tip.Effect,
+		}))
+	}
+
+	// 延迟30-60秒后真的触发价格变动
+	go func() {
+		delay := time.Duration(30+rand.Intn(30)) * time.Second
+		time.Sleep(delay)
+
+		// 应用价格变动
+		var s models.Stock
+		if err := db.First(&s, stock.ID).Error; err != nil {
+			return
+		}
+
+		newPrice := s.CurrentPrice * (1 + tip.Effect)
+		if newPrice < s.PriceMin {
+			newPrice = s.PriceMin
+		}
+		if newPrice > s.PriceMax {
+			newPrice = s.PriceMax
+		}
+
+		var changePercent float64
+		if s.OpenPrice != nil && *s.OpenPrice > 0 {
+			changePercent = (newPrice - *s.OpenPrice) / *s.OpenPrice * 100
+		}
+
+		s.CurrentPrice = newPrice
+		s.ChangePercent = changePercent
+		db.Save(&s)
+
+		// 广播价格更新
+		if ws.GameHub != nil {
+			ws.GameHub.Broadcast(ws.NewMessage(ws.MsgTypeStockPrice, map[string]interface{}{
+				"stock_id":       s.ID,
+				"code":           s.Code,
+				"current_price":  newPrice,
+				"change_percent": changePercent,
+			}))
+		}
+	}()
+
+	log.Printf("内幕消息发送给用户 %s: %s", user.Nickname, message)
 	return nil
 }

@@ -86,6 +86,8 @@ func SetupRouter() *gin.Engine {
 			auth.GET("/stock/list", stockHandler.GetStocks)
 			auth.GET("/stock/:id", stockHandler.GetStock)
 			auth.GET("/stock/:id/kline", stockHandler.GetKLine)
+			auth.GET("/stock/news", stockHandler.GetStockNews)
+			auth.GET("/stock/today-profit", stockHandler.GetTodayProfit)
 			auth.POST("/stock/buy", stockHandler.BuyStock)
 			auth.POST("/stock/sell", stockHandler.SellStock)
 			auth.POST("/stock/long", stockHandler.OpenLong)

@@ -65,6 +65,49 @@ func (r *StockRepository) GetStockPrices(stockID uint, periodType string, limit 
 	return prices, err
 }
 
+// GetTodayKLine 获取今天的K线数据
+func (r *StockRepository) GetTodayKLine(stockID uint, date string) (*models.StockPrice, error) {
+	var price models.StockPrice
+	err := r.db.Where("stock_id = ? AND period_type = '1d' AND DATE(recorded_at) = ?", stockID, date).First(&price).Error
+	if err != nil {
+		return nil, err
+	}
+	return &price, nil
+}
+
+// CreateStockPrice 创建K线记录
+func (r *StockRepository) CreateStockPrice(price *models.StockPrice) error {
+	return r.db.Create(price).Error
+}
+
+// UpdateStockPrice 更新K线记录
+func (r *StockRepository) UpdateStockPrice(price *models.StockPrice) error {
+	return r.db.Save(price).Error
+}
+
+// GetStockNews 获取股票新闻
+func (r *StockRepository) GetStockNews(limit int) ([]models.StockNews, error) {
+	var news []models.StockNews
+	err := r.db.Order("created_at DESC").Limit(limit).Find(&news).Error
+	return news, err
+}
+
+// GetProfitsByDate 获取指定日期盈亏
+func (r *StockRepository) GetProfitsByDate(userID uint, date string) ([]models.StockProfit, error) {
+	var profits []models.StockProfit
+	err := r.db.Where("user_id = ? AND DATE(created_at) = ?", userID, date).
+		Order("created_at DESC").Find(&profits).Error
+	return profits, err
+}
+
+// GetAllProfits 获取全部历史盈亏
+func (r *StockRepository) GetAllProfits(userID uint) ([]models.StockProfit, error) {
+	var profits []models.StockProfit
+	err := r.db.Where("user_id = ?", userID).
+		Order("created_at DESC").Limit(500).Find(&profits).Error
+	return profits, err
+}
+
 // === 用户现货持仓 ===
 
 // GetUserStocks 获取用户所有持仓

@@ -230,3 +230,32 @@ func (h *StockHandler) GetRankings(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"rankings": rankings})
 }
+
+// GetStockNews 获取股票新闻
+func (h *StockHandler) GetStockNews(c *gin.Context) {
+	limitStr := c.DefaultQuery("limit", "20")
+	limit, _ := strconv.Atoi(limitStr)
+	if limit > 100 {
+		limit = 100
+	}
+
+	news, err := h.stockService.GetStockNews(limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"news": news})
+}
+
+// GetTodayProfit 获取盈亏（支持日期参数）
+func (h *StockHandler) GetTodayProfit(c *gin.Context) {
+	userID, _ := c.Get("userID")
+	date := c.DefaultQuery("date", "") // 格式 2025-12-31
+	profits, total, err := h.stockService.GetProfitByDate(userID.(uint), date)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"profits": profits, "total": total})
+}

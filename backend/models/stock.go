@@ -162,3 +162,34 @@ type StockRanking struct {
 func (StockRanking) TableName() string {
 	return "stock_rankings"
 }
+
+// StockNews 股票新闻
+type StockNews struct {
+	ID        uint      `json:"id" gorm:"primaryKey"`
+	StockID   uint      `json:"stock_id" gorm:"not null;index"`
+	StockCode string    `json:"stock_code" gorm:"size:10;not null"`
+	StockName string    `json:"stock_name" gorm:"size:50;not null"`
+	Title     string    `json:"title" gorm:"size:255;not null"`
+	Effect    float64   `json:"effect" gorm:"type:decimal(5,2);not null"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (StockNews) TableName() string {
+	return "stock_news"
+}
+
+// StockProfit 股票盈亏记录
+type StockProfit struct {
+	ID            uint      `json:"id" gorm:"primaryKey"`
+	UserID        uint      `json:"user_id" gorm:"not null;index"`
+	StockID       uint      `json:"stock_id" gorm:"not null"`
+	StockName     string    `json:"stock_name" gorm:"size:50;not null"`
+	Amount        float64   `json:"amount" gorm:"type:decimal(20,2);not null"`
+	ChangePercent float64   `json:"change_percent" gorm:"type:decimal(10,4);not null"`
+	Shares        int64     `json:"shares" gorm:"not null"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+func (StockProfit) TableName() string {
+	return "stock_profits"
+}

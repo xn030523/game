@@ -36,6 +36,33 @@ func (s *StockService) GetStockKLine(stockID uint, periodType string, limit int)
 	return s.stockRepo.GetStockPrices(stockID, periodType, limit)
 }
 
+// GetStockNews 获取股票新闻
+func (s *StockService) GetStockNews(limit int) ([]models.StockNews, error) {
+	return s.stockRepo.GetStockNews(limit)
+}
+
+// GetProfitByDate 获取盈亏（空date=今日，all=全部历史）
+func (s *StockService) GetProfitByDate(userID uint, date string) ([]models.StockProfit, float64, error) {
+	var profits []models.StockProfit
+	var err error
+	if date == "all" {
+		profits, err = s.stockRepo.GetAllProfits(userID)
+	} else if date == "" {
+		date = time.Now().Format("2006-01-02")
+		profits, err = s.stockRepo.GetProfitsByDate(userID, date)
+	} else {
+		profits, err = s.stockRepo.GetProfitsByDate(userID, date)
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+	var total float64
+	for _, p := range profits {
+		total += p.Amount
+	}
+	return profits, total, nil
+}
+
 // === 现货交易 ===
 
 // BuyStock 买入股票(现货)
@@ -507,14 +534,63 @@ func (s *StockService) updateStockPrice(stock *models.Stock, shares int64, isBuy
 	}
 	
 	stock.CurrentPrice = newPrice
+	// 更新当日最高最低价
+	if stock.HighPrice == nil || newPrice > *stock.HighPrice {
+		stock.HighPrice = &newPrice
+	}
+	if stock.LowPrice == nil || newPrice < *stock.LowPrice {
+		stock.LowPrice = &newPrice
+	}
 	s.stockRepo.UpdateStock(stock)
 	
+	// 实时记录 K 线数据
+	s.recordKLine(stock, shares)
+	
 	// WebSocket 广播价格更新
-	ws.GameHub.Broadcast(ws.NewMessage(ws.MsgTypeStockPrice, map[string]interface{}{
-		"stock_id":       stock.ID,
-		"code":           stock.Code,
-		"current_price":  newPrice,
-		"change_percent": stock.ChangePercent,
-		"open_price":     stock.OpenPrice,
-	}))
+	if ws.GameHub != nil {
+		ws.GameHub.Broadcast(ws.NewMessage(ws.MsgTypeStockPrice, map[string]interface{}{
+			"stock_id":       stock.ID,
+			"code":           stock.Code,
+			"current_price":  newPrice,
+			"change_percent": stock.ChangePercent,
+		}))
+	}
+}
+
+// recordKLine 实时记录 K 线数据
+func (s *StockService) recordKLine(stock *models.Stock, volume int64) {
+	now := time.Now()
+	today := now.Format("2006-01-02")
+	
+	// 查找今天的 K 线记录
+	kline, err := s.stockRepo.GetTodayKLine(stock.ID, today)
+	if err != nil {
+		// 创建新的日 K 线
+		openPrice := stock.CurrentPrice
+		if stock.OpenPrice != nil {
+			openPrice = *stock.OpenPrice
+		}
+		kline = &models.StockPrice{
+			StockID:    stock.ID,
+			Price:      stock.CurrentPrice,
+			OpenPrice:  &openPrice,
+			HighPrice:  &stock.CurrentPrice,
+			LowPrice:   &stock.CurrentPrice,
+			Volume:     volume,
+			PeriodType: "1d",
+			RecordedAt: now,
+		}
+		s.stockRepo.CreateStockPrice(kline)
+	} else {
+		// 更新现有 K 线
+		kline.Price = stock.CurrentPrice
+		if kline.HighPrice == nil || stock.CurrentPrice > *kline.HighPrice {
+			kline.HighPrice = &stock.CurrentPrice
+		}
+		if kline.LowPrice == nil || stock.CurrentPrice < *kline.LowPrice {
+			kline.LowPrice = &stock.CurrentPrice
+		}
+		kline.Volume += volume
+		s.stockRepo.UpdateStockPrice(kline)
+	}
 }
