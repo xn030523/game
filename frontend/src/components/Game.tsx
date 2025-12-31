@@ -36,14 +36,19 @@ export default function Game({ onOpenMarket }: GameProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<Application | null>(null)
   const farmContainerRef = useRef<Container | null>(null)
+  const farmsRef = useRef<typeof farms>([])
   const [appReady, setAppReady] = useState(false)
   const { user, farms, inventory, refreshFarms, refreshInventory, refreshProfile } = useUser()
   const { showToast } = useToast()
+  
+  // 保持 farms ref 最新
+  farmsRef.current = farms
   
   // 种植面板状态
   const [plantPanel, setPlantPanel] = useState<{ show: boolean; slotIndex: number }>({ show: false, slotIndex: -1 })
   const [seeds, setSeeds] = useState<Seed[]>([])
   const [planting, setPlanting] = useState(false)
+  const panelOpenTimeRef = useRef(0) // 记录面板打开时间，防止立即关闭
   
   // 获取仓库中的种子（数量大于0）
   const seedItems = inventory.filter(i => i.item_type === 'seed' && i.quantity > 0)
@@ -113,12 +118,17 @@ export default function Game({ onOpenMarket }: GameProps) {
 
       const dirtTexture = await loadTexture('/tiny-nong/Tiles/tile_0025.png')
       
-      const farmSize = TILE_SIZE * SCALE * 2 // 每块农田大小
-      const gap = 8
+      // 根据屏幕宽度计算农田大小，两侧留 20% 边距
+      const maxWidth = WIDTH * 0.8
+      const gap = 10
+      const baseFarmSize = TILE_SIZE * SCALE * 2
+      const calculatedFarmSize = (maxWidth - (cols - 1) * gap) / cols
+      const farmSize = Math.min(baseFarmSize, calculatedFarmSize)
+      
       const totalWidth = cols * farmSize + (cols - 1) * gap
       const totalHeight = rows * farmSize + (rows - 1) * gap
       const startX = (WIDTH - totalWidth) / 2
-      const startY = (HEIGHT - totalHeight) / 2 + 50 // 留出顶部空间
+      const startY = (HEIGHT - totalHeight) / 2 + 30 // 留出顶部空间
 
       for (let i = 0; i < farmSlots; i++) {
         const row = Math.floor(i / cols)
@@ -139,8 +149,10 @@ export default function Game({ onOpenMarket }: GameProps) {
         
         // 点击事件
         const slotIndex = i
-        dirt.on('pointerdown', () => {
-          handleFarmClick(slotIndex, farm)
+        dirt.on('pointerdown', (e: { stopPropagation?: () => void }) => {
+          e.stopPropagation?.()
+          const currentFarm = farmsRef.current.find(f => f.slot_index === slotIndex)
+          handleFarmClick(slotIndex, currentFarm)
         })
 
         farmContainer.addChild(dirt)
@@ -206,6 +218,7 @@ export default function Game({ onOpenMarket }: GameProps) {
   const handleFarmClick = async (slotIndex: number, farm: typeof farms[0] | undefined) => {
     if (!farm || farm.status === 'empty') {
       // 空地：打开种植面板
+      panelOpenTimeRef.current = Date.now()
       setPlantPanel({ show: true, slotIndex })
     } else if (farm.status === 'mature') {
       // 成熟：收获
@@ -251,8 +264,16 @@ export default function Game({ onOpenMarket }: GameProps) {
       
       {/* 种植面板 */}
       {plantPanel.show && (
-        <div className="plant-panel-overlay" onClick={() => setPlantPanel({ show: false, slotIndex: -1 })}>
-          <div className="plant-panel" onClick={e => e.stopPropagation()}>
+        <div 
+          className="plant-panel-overlay" 
+          onMouseDown={(e) => {
+            // 只有点击 overlay 本身才关闭，且要在打开200ms后才能关闭
+            if (e.target === e.currentTarget && Date.now() - panelOpenTimeRef.current > 200) {
+              setPlantPanel({ show: false, slotIndex: -1 })
+            }
+          }}
+        >
+          <div className="plant-panel" onMouseDown={e => e.stopPropagation()}>
             <div className="plant-panel-header">
               <h3>选择种子</h3>
               <button className="plant-panel-close" onClick={() => setPlantPanel({ show: false, slotIndex: -1 })}>×</button>

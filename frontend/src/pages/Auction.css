@@ -303,3 +303,129 @@
   text-align: center;
   padding: 20px;
 }
+
+/* 移动端响应式 */
+@media (max-width: 600px) {
+  .auction-container {
+    padding: 10px;
+  }
+
+  .auction-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .auction-header h2 {
+    font-size: 1.1rem;
+  }
+
+  .auction-tabs {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .auction-tabs button {
+    flex: 1;
+    padding: 6px 10px;
+    font-size: 12px;
+    text-align: center;
+    min-width: 70px;
+  }
+
+  .auction-card {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .auction-item-info {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .item-name {
+    font-size: 14px;
+  }
+
+  .auction-price-info {
+    flex-direction: row;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .price-row {
+    font-size: 12px;
+  }
+
+  .auction-status {
+    flex-direction: row;
+    justify-content: space-between;
+    font-size: 11px;
+  }
+
+  .auction-actions {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .auction-actions input {
+    width: 100%;
+    padding: 8px;
+  }
+
+  .auction-actions button {
+    width: 100%;
+    padding: 10px;
+    font-size: 13px;
+  }
+
+  .create-auction {
+    max-width: none;
+    padding: 15px;
+  }
+
+  .form-row {
+    margin-bottom: 12px;
+  }
+
+  .form-row label {
+    font-size: 13px;
+  }
+
+  .form-row input,
+  .form-row select {
+    padding: 8px;
+    font-size: 13px;
+  }
+
+  .create-btn {
+    padding: 10px;
+    font-size: 14px;
+  }
+
+  .my-auctions h3 {
+    font-size: 14px;
+  }
+
+  .history-item {
+    padding: 10px;
+  }
+
+  .history-info .item-name {
+    font-size: 13px;
+  }
+
+  .history-detail {
+    font-size: 12px;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .history-time {
+    font-size: 11px;
+  }
+}

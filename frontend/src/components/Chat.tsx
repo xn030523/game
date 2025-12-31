@@ -65,7 +65,7 @@ export default function Chat() {
   return (
     <div className={`chat-container ${isOpen ? 'open' : 'closed'}`}>
       <div className="chat-header" onClick={() => setIsOpen(!isOpen)}>
-        <span>💬 世界聊天</span>
+        <span>{isOpen ? '💬 世界聊天' : '💬'}</span>
         <span className="chat-toggle">{isOpen ? '▼' : '▲'}</span>
       </div>
       {isOpen && (

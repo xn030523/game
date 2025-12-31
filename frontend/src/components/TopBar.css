@@ -194,3 +194,96 @@
 .profile-close:hover {
   background: #7d5029;
 }
+
+/* 移动端响应式 */
+@media (max-width: 600px) {
+  .topbar-container {
+    top: 5px;
+    left: 5px;
+    right: 5px;
+    padding: 6px 10px;
+    gap: 8px;
+  }
+
+  .topbar-logo {
+    font-size: 11px;
+    padding: 4px 6px;
+  }
+
+  .topbar-menu {
+    position: fixed;
+    top: 50px;
+    right: 5px;
+    flex-direction: column;
+    background: rgba(60, 40, 20, 0.95);
+    border: 2px solid #5D2E0C;
+    border-radius: 8px;
+    padding: 6px;
+    gap: 4px;
+    display: none;
+    z-index: 101;
+  }
+
+  .topbar-menu.show {
+    display: flex;
+  }
+
+  .topbar-btn {
+    font-size: 12px;
+    padding: 8px 12px;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  .topbar-right {
+    margin-left: auto;
+    gap: 6px;
+  }
+
+  .topbar-user span {
+    display: none;
+  }
+
+  .topbar-avatar {
+    width: 24px;
+    height: 24px;
+  }
+
+  .topbar-info {
+    display: none;
+  }
+
+  .topbar-coin {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+
+  .menu-toggle {
+    display: flex !important;
+    background: #8B4513;
+    border: 2px solid #5D2E0C;
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 16px;
+  }
+
+  .profile-panel {
+    padding: 10px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .profile-content {
+    min-width: auto;
+    width: 95%;
+    max-width: 320px;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+}
+
+.menu-toggle {
+  display: none;
+}

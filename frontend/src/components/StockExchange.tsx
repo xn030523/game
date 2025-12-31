@@ -409,8 +409,8 @@ export default function StockExchange({ isOpen, onClose }: StockExchangeProps) {
       ) : (
         <>
           {tab === 'market' && (
-            <div style={{ display: 'flex', gap: 16 }}>
-            <div style={{ flex: 1 }}>
+            <div className="stock-market-layout">
+            <div className="stock-table-wrap">
             <table className="table">
               <thead>
                 <tr>
@@ -448,13 +448,13 @@ export default function StockExchange({ isOpen, onClose }: StockExchangeProps) {
             </div>
 
             {/* 新闻滚动 */}
-            <div style={{ width: 280, padding: 12, background: 'rgba(0,0,0,0.3)', borderRadius: 8, maxHeight: 300, overflowY: 'auto' }}>
+            <div className="stock-news-panel">
               <div style={{ color: '#ffd700', marginBottom: 10, fontWeight: 'bold', fontSize: 14 }}>📰 市场新闻</div>
               {news.length === 0 ? (
                 <div style={{ color: '#888', fontSize: 12 }}>暂无新闻...</div>
               ) : (
                 news.map((n, i) => (
-                  <div key={i} style={{ fontSize: 12, marginBottom: 8, padding: '6px 8px', background: 'rgba(0,0,0,0.2)', borderRadius: 4, borderLeft: `3px solid ${n.effect > 0 ? '#4caf50' : '#f44336'}` }}>
+                  <div key={i} className="stock-news-item" style={{ borderLeftColor: n.effect > 0 ? '#4caf50' : '#f44336' }}>
                     <div style={{ color: '#888', fontSize: 10, marginBottom: 2 }}>{n.time}</div>
                     <div style={{ color: n.effect > 0 ? '#4caf50' : '#f44336' }}>{n.title}</div>
                   </div>
@@ -563,7 +563,7 @@ export default function StockExchange({ isOpen, onClose }: StockExchangeProps) {
           justifyContent: 'center',
           zIndex: 1001
         }} onClick={() => setSelectedStock(null)}>
-          <div className="card" style={{ minWidth: 380, maxWidth: 450 }} onClick={e => e.stopPropagation()}>
+          <div className="card" style={{ width: '95%', maxWidth: 420 }} onClick={e => e.stopPropagation()}>
             <h3 style={{ color: '#ffd700', marginBottom: 16 }}>
               {selectedStock.name} ({selectedStock.code})
             </h3>

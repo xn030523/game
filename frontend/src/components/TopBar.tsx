@@ -26,6 +26,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
   const { user, stats, refreshProfile } = useUser()
   const { showToast } = useToast()
   const [showProfile, setShowProfile] = useState(false)
+  const [showMenu, setShowMenu] = useState(false)
   const [checkinLoading, setCheckinLoading] = useState(false)
   const [todayChecked, setTodayChecked] = useState(false)
 
@@ -64,15 +65,21 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
     }
   }
 
+  const handleMenuClick = (id: ModalType) => {
+    setShowMenu(false)
+    onMenuClick(id)
+  }
+
   return (
     <div className="topbar-container">
       <span className="topbar-logo">🌾农场游戏</span>
-      <div className="topbar-menu">
+      <button className="menu-toggle" onClick={() => setShowMenu(!showMenu)}>☰</button>
+      <div className={`topbar-menu ${showMenu ? 'show' : ''}`}>
         {menuItems.map(item => (
           <button
             key={item.id}
             className="topbar-btn"
-            onClick={() => onMenuClick(item.id)}
+            onClick={() => handleMenuClick(item.id)}
           >
             <span>{item.icon}</span>
             <span className="btn-text">{item.name}</span>

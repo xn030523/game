@@ -155,11 +155,30 @@
 
 @media (max-width: 600px) {
   .chat-container {
-    width: calc(100% - 20px);
-    left: 10px;
+    width: auto;
+    left: auto;
     right: 10px;
     bottom: 10px;
     border-width: 2px;
+    max-width: calc(100% - 20px);
+  }
+
+  .chat-container.closed {
+    width: auto;
+  }
+
+  .chat-container.closed .chat-header {
+    padding: 8px 12px;
+    font-size: 18px;
+  }
+
+  .chat-container.closed .chat-toggle {
+    display: none;
+  }
+
+  .chat-container.open {
+    width: calc(100% - 20px);
+    left: 10px;
   }
   
   .chat-header {
