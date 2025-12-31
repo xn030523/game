@@ -183,6 +183,11 @@ func (s *AuctionService) Buyout(userID uint, auctionID uint) error {
 
 	buyoutPrice := *auction.BuyoutPrice
 
+	// 如果买家是当前最高出价者，先退还他的出价
+	if auction.HighestBidder != nil && *auction.HighestBidder == userID {
+		s.userRepo.UpdateGold(userID, auction.CurrentPrice)
+	}
+
 	// 检查金币
 	user, _ := s.userRepo.FindByID(userID)
 	if user.Gold < buyoutPrice {
@@ -194,8 +199,8 @@ func (s *AuctionService) Buyout(userID uint, auctionID uint) error {
 		return err
 	}
 
-	// 退还之前出价者的金币
-	if auction.HighestBidder != nil {
+	// 退还之前出价者的金币（如果不是买家自己）
+	if auction.HighestBidder != nil && *auction.HighestBidder != userID {
 		s.userRepo.UpdateGold(*auction.HighestBidder, auction.CurrentPrice)
 	}
 

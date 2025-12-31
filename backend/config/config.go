@@ -61,11 +61,23 @@ func InitDB() {
 
 	var err error
 	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Warn),
+		Logger:                 logger.Default.LogMode(logger.Warn),
+		SkipDefaultTransaction: true,
+		PrepareStmt:            true,
 	})
 	if err != nil {
 		log.Fatal("数据库连接失败:", err)
 	}
+
+	// 配置连接池
+	sqlDB, err := DB.DB()
+	if err != nil {
+		log.Fatal("获取数据库连接池失败:", err)
+	}
+	sqlDB.SetMaxIdleConns(20)
+	sqlDB.SetMaxOpenConns(100)
+	sqlDB.SetConnMaxLifetime(30 * 60 * 1000000000)
+
 	log.Println("数据库连接成功")
 
 	// 检查并初始化表

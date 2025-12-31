@@ -3,17 +3,27 @@ package repository
 import (
 	"farm-game/config"
 	"farm-game/models"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type BlackmarketRepository struct {
 	db *gorm.DB
 }
 
+var (
+	blackmarketRepoInstance *BlackmarketRepository
+	blackmarketRepoOnce     sync.Once
+)
+
 func NewBlackmarketRepository() *BlackmarketRepository {
-	return &BlackmarketRepository{db: config.GetDB()}
+	blackmarketRepoOnce.Do(func() {
+		blackmarketRepoInstance = &BlackmarketRepository{db: config.GetDB()}
+	})
+	return blackmarketRepoInstance
 }
 
 // === 批次相关 ===
@@ -22,7 +32,7 @@ func NewBlackmarketRepository() *BlackmarketRepository {
 func (r *BlackmarketRepository) GetActiveBatch() (*models.BlackmarketBatch, error) {
 	var batch models.BlackmarketBatch
 	now := time.Now()
-	err := r.db.Where("is_active = ? AND start_at <= ? AND end_at > ?", true, now, now).First(&batch).Error
+	err := r.db.Session(&gorm.Session{Logger: logger.Discard}).Where("is_active = ? AND start_at <= ? AND end_at > ?", true, now, now).First(&batch).Error
 	if err != nil {
 		return nil, err
 	}

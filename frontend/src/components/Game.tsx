@@ -4,6 +4,7 @@ import { useUser } from '../contexts/UserContext'
 import { useToast } from './Toast'
 import { api } from '../services/api'
 import { ws } from '../services/websocket'
+import { dataCache } from '../stores/dataCache'
 import type { Seed } from '../types'
 import './Game.css'
 
@@ -11,6 +12,21 @@ const TILE_SIZE = 16
 const SCALE = 3
 const WIDTH = window.innerWidth
 const HEIGHT = window.innerHeight
+
+const textureCache = new Map<string, unknown>()
+
+async function loadTexture(path: string) {
+  if (textureCache.has(path)) {
+    return textureCache.get(path)
+  }
+  try {
+    const texture = await Assets.load(path)
+    textureCache.set(path, texture)
+    return texture
+  } catch {
+    return null
+  }
+}
 
 interface GameProps {
   onOpenMarket?: () => void
@@ -95,7 +111,7 @@ export default function Game({ onOpenMarket }: GameProps) {
       const farmSlots = user?.farm_slots || 4
       const { cols, rows } = getGridSize(farmSlots)
 
-      const dirtTexture = await Assets.load('/tiny-nong/Tiles/tile_0025.png')
+      const dirtTexture = await loadTexture('/tiny-nong/Tiles/tile_0025.png')
       
       const farmSize = TILE_SIZE * SCALE * 2 // 每块农田大小
       const gap = 8
@@ -131,16 +147,14 @@ export default function Game({ onOpenMarket }: GameProps) {
 
         // 如果有作物且不是空地，显示作物
         if (farm && farm.status !== 'empty' && farm.seed_id && farm.seed) {
-          try {
-            const cropTexture = await Assets.load(`${farm.seed.icon}/${farm.stage}.png`)
+          const cropTexture = await loadTexture(`${farm.seed.icon}/${farm.stage}.png`)
+          if (cropTexture) {
             const cropSprite = new Sprite(cropTexture)
             cropSprite.x = dirt.x + farmSize / 2
             cropSprite.y = dirt.y + farmSize / 2
             cropSprite.anchor.set(0.5)
             cropSprite.scale.set(SCALE)
             farmContainer.addChild(cropSprite)
-          } catch (e) {
-            console.log('作物图片加载失败')
           }
 
           // 状态文字提示
@@ -167,17 +181,17 @@ export default function Game({ onOpenMarket }: GameProps) {
     updateFarms()
   }, [appReady, user?.farm_slots, farms, getGridSize])
 
-  // 加载种子数据
+  // 加载种子数据（使用缓存）
   useEffect(() => {
-    api.getSeeds().then(data => setSeeds(data.seeds || [])).catch(() => {})
+    dataCache.getSeeds().then(setSeeds).catch(() => {})
   }, [])
 
-  // 定时刷新农田状态（每10秒）
+  // 监听农田状态变化（通过WebSocket，不再轮询）
   useEffect(() => {
-    const timer = setInterval(() => {
+    const unsubUpdate = ws.on('farm_update', () => {
       refreshFarms()
-    }, 10000)
-    return () => clearInterval(timer)
+    })
+    return () => unsubUpdate()
   }, [refreshFarms])
 
   // 监听作物成熟通知

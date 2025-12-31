@@ -3,16 +3,26 @@ package repository
 import (
 	"farm-game/config"
 	"farm-game/models"
+	"sync"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type UserRepository struct {
 	db *gorm.DB
 }
 
+var (
+	userRepoInstance *UserRepository
+	userRepoOnce     sync.Once
+)
+
 func NewUserRepository() *UserRepository {
-	return &UserRepository{db: config.GetDB()}
+	userRepoOnce.Do(func() {
+		userRepoInstance = &UserRepository{db: config.GetDB()}
+	})
+	return userRepoInstance
 }
 
 // FindByID 根据ID查找用户
@@ -54,7 +64,7 @@ func (r *UserRepository) UpdateGold(userID uint, amount float64) error {
 // GetUserStats 获取用户统计（不存在则自动创建）
 func (r *UserRepository) GetUserStats(userID uint) (*models.UserStats, error) {
 	var stats models.UserStats
-	err := r.db.Where("user_id = ?", userID).First(&stats).Error
+	err := r.db.Session(&gorm.Session{Logger: logger.Discard}).Where("user_id = ?", userID).First(&stats).Error
 	if err != nil {
 		// 不存在则创建
 		stats = models.UserStats{UserID: userID}

@@ -383,6 +383,7 @@ func CheckCropMature() error {
 	}
 
 	now := time.Now()
+	maturedUsers := make(map[uint]bool)
 	for _, farm := range farms {
 		if farm.SeedID == nil || farm.PlantedAt == nil || farm.Seed == nil {
 			continue
@@ -392,17 +393,26 @@ func CheckCropMature() error {
 		elapsed := now.Sub(*farm.PlantedAt).Seconds()
 		if int(elapsed) >= farm.Seed.GrowthTime {
 			farm.Status = "mature"
-			farm.Stage = farm.Seed.Stages - 1 // 贴图从0开始
+			farm.Stage = farm.Seed.Stages - 1
 			db.Save(&farm)
+			maturedUsers[farm.UserID] = true
 
 			// 推送成熟通知
 			if ws.Notify != nil {
-				// 获取作物名称
 				var crop models.Crop
 				if err := db.Where("seed_id = ?", farm.SeedID).First(&crop).Error; err == nil {
 					ws.Notify.NotifyCropMature(farm.UserID, farm.SlotIndex, crop.Name)
 				}
 			}
+		}
+	}
+
+	// 给有作物成熟的用户发送farm_update通知
+	for userID := range maturedUsers {
+		if ws.GameHub != nil {
+			ws.GameHub.SendToUser(fmt.Sprintf("%d", userID), ws.NewMessage("farm_update", map[string]interface{}{
+				"user_id": userID,
+			}))
 		}
 	}
 
@@ -501,14 +511,24 @@ func StockTick() error {
 			db.Save(&kline)
 		}
 
-		// WebSocket 推送
+		// WebSocket 推送（带完整 OHLC 数据）
 		if ws.GameHub != nil {
-			ws.GameHub.Broadcast(ws.NewMessage(ws.MsgTypeStockPrice, map[string]interface{}{
+			data := map[string]interface{}{
 				"stock_id":       stock.ID,
 				"code":           stock.Code,
 				"current_price":  newPrice,
 				"change_percent": changePercent,
-			}))
+			}
+			if stock.OpenPrice != nil {
+				data["open_price"] = *stock.OpenPrice
+			}
+			if stock.HighPrice != nil {
+				data["high_price"] = *stock.HighPrice
+			}
+			if stock.LowPrice != nil {
+				data["low_price"] = *stock.LowPrice
+			}
+			ws.GameHub.Broadcast(ws.NewMessage(ws.MsgTypeStockPrice, data))
 		}
 	}
 	return nil

@@ -5,24 +5,36 @@ import { api } from '../services/api'
 import { ws } from '../services/websocket'
 import type { ChatMessage } from '../types'
 
+let chatMessagesLoaded = false
+let chatMessagesCache: ChatMessage[] = []
+
 export default function Chat() {
   const { showToast } = useToast()
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [messages, setMessages] = useState<ChatMessage[]>(chatMessagesCache)
   const [input, setInput] = useState('')
   const [isOpen, setIsOpen] = useState(true)
   const [sending, setSending] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    // 加载历史消息
-    api.getChatMessages().then(data => {
-      setMessages(data.messages || [])
-    }).catch(() => {})
+    // 加载历史消息（使用缓存避免重复请求）
+    if (!chatMessagesLoaded) {
+      api.getChatMessages().then(data => {
+        const msgs = data.messages || []
+        setMessages(msgs)
+        chatMessagesCache = msgs
+        chatMessagesLoaded = true
+      }).catch(() => {})
+    }
 
     // 监听新消息
     const unsub = ws.on('chat', (data) => {
       const msg = data as unknown as ChatMessage
-      setMessages(prev => [...prev, msg])
+      setMessages(prev => {
+        const newMsgs = [...prev, msg]
+        chatMessagesCache = newMsgs
+        return newMsgs
+      })
     })
 
     return unsub

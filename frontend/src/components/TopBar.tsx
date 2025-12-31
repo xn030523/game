@@ -5,6 +5,9 @@ import { useToast } from './Toast'
 import { api } from '../services/api'
 import type { ModalType } from '../App'
 
+let checkinCacheLoaded = false
+let checkinCacheValue = false
+
 const menuItems: { id: ModalType; name: string; icon: string }[] = [
   { id: 'warehouse', name: '仓库', icon: '📦' },
   { id: 'market', name: '交易市场', icon: '🏪' },
@@ -26,13 +29,19 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
   const [checkinLoading, setCheckinLoading] = useState(false)
   const [todayChecked, setTodayChecked] = useState(false)
 
-  // 检查今日是否已签到
+  // 检查今日是否已签到（使用缓存避免重复请求）
   useEffect(() => {
+    if (checkinCacheLoaded) {
+      setTodayChecked(checkinCacheValue)
+      return
+    }
     api.getMonthCheckins().then(data => {
       const today = new Date().getDate()
       const checkins = data.checkins as Array<{ day_of_month: number }>
       const checked = checkins?.some(c => c.day_of_month === today)
       setTodayChecked(!!checked)
+      checkinCacheLoaded = true
+      checkinCacheValue = !!checked
     }).catch(() => {})
   }, [])
 

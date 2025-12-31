@@ -3,6 +3,10 @@ package repository
 import (
 	"farm-game/config"
 	"farm-game/models"
+	"farm-game/utils"
+	"fmt"
+	"sync"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -12,17 +16,30 @@ type MarketRepository struct {
 	db *gorm.DB
 }
 
+var (
+	marketRepoInstance *MarketRepository
+	marketRepoOnce     sync.Once
+)
+
 func NewMarketRepository() *MarketRepository {
-	return &MarketRepository{db: config.GetDB()}
+	marketRepoOnce.Do(func() {
+		marketRepoInstance = &MarketRepository{db: config.GetDB()}
+	})
+	return marketRepoInstance
 }
 
-// GetMarketStatus 获取市场状态
+// GetMarketStatus 获取市场状态（带缓存）
 func (r *MarketRepository) GetMarketStatus(itemType string, itemID uint) (*models.MarketStatus, error) {
+	cacheKey := fmt.Sprintf("market:%s:%d", itemType, itemID)
+	if cached, ok := utils.GlobalCache.Get(cacheKey); ok {
+		return cached.(*models.MarketStatus), nil
+	}
 	var status models.MarketStatus
 	err := r.db.Session(&gorm.Session{Logger: logger.Discard}).Where("item_type = ? AND item_id = ?", itemType, itemID).First(&status).Error
 	if err != nil {
 		return nil, err
 	}
+	utils.GlobalCache.Set(cacheKey, &status, 30*time.Second)
 	return &status, nil
 }
 
@@ -68,19 +85,20 @@ func (r *MarketRepository) GetPriceRule(itemType string, itemID uint) (*models.P
 	return &rule, nil
 }
 
-// UpdateBuyVolume 更新买入量（需求增加，价格上涨）
+// UpdateBuyVolume 更新买入量（需求增加，价格上涨）- 优化版
 func (r *MarketRepository) UpdateBuyVolume(itemType string, itemID uint, quantity int) {
+	cacheKey := fmt.Sprintf("market:%s:%d", itemType, itemID)
+	utils.GlobalCache.Delete(cacheKey)
+
 	var status models.MarketStatus
 	err := r.db.Session(&gorm.Session{Logger: logger.Discard}).Where("item_type = ? AND item_id = ?", itemType, itemID).First(&status).Error
 	if err != nil {
-		// 不存在则创建
 		status = models.MarketStatus{
 			ItemType:     itemType,
 			ItemID:       itemID,
 			CurrentRate:  1.0,
 			BuyVolume24h: int64(quantity),
 		}
-		// 获取基础价格
 		if itemType == "seed" {
 			var seed models.Seed
 			if r.db.First(&seed, itemID).Error == nil {
@@ -90,26 +108,28 @@ func (r *MarketRepository) UpdateBuyVolume(itemType string, itemID uint, quantit
 		r.db.Create(&status)
 		return
 	}
-	status.BuyVolume24h += int64(quantity)
-	// 买入越多，价格越高（每10个交易量涨1%）
+	// 使用原子更新
 	priceChange := float64(quantity) / 10.0 * 0.01 * status.CurrentPrice
-	status.CurrentPrice += priceChange
-	r.db.Save(&status)
+	r.db.Model(&status).Updates(map[string]interface{}{
+		"buy_volume24h": gorm.Expr("buy_volume24h + ?", quantity),
+		"current_price": gorm.Expr("current_price + ?", priceChange),
+	})
 }
 
-// UpdateSellVolume 更新卖出量（供给增加，价格下跌）
+// UpdateSellVolume 更新卖出量（供给增加，价格下跌）- 优化版
 func (r *MarketRepository) UpdateSellVolume(itemType string, itemID uint, quantity int) {
+	cacheKey := fmt.Sprintf("market:%s:%d", itemType, itemID)
+	utils.GlobalCache.Delete(cacheKey)
+
 	var status models.MarketStatus
 	err := r.db.Session(&gorm.Session{Logger: logger.Discard}).Where("item_type = ? AND item_id = ?", itemType, itemID).First(&status).Error
 	if err != nil {
-		// 不存在则创建
 		status = models.MarketStatus{
 			ItemType:      itemType,
 			ItemID:        itemID,
 			CurrentRate:   1.0,
 			SellVolume24h: int64(quantity),
 		}
-		// 获取基础价格
 		if itemType == "crop" {
 			var crop models.Crop
 			if r.db.First(&crop, itemID).Error == nil {
@@ -119,19 +139,21 @@ func (r *MarketRepository) UpdateSellVolume(itemType string, itemID uint, quanti
 		r.db.Create(&status)
 		return
 	}
-	status.SellVolume24h += int64(quantity)
-	// 卖出越多，价格越低（每10个交易量跌1%）
+	// 使用原子更新
 	priceChange := float64(quantity) / 10.0 * 0.01 * status.CurrentPrice
-	status.CurrentPrice -= priceChange
+	newPrice := status.CurrentPrice - priceChange
 	// 价格不能低于基础价格的50%
 	if itemType == "crop" {
 		var crop models.Crop
 		if r.db.First(&crop, itemID).Error == nil {
 			minPrice := crop.BaseSellPrice * 0.5
-			if status.CurrentPrice < minPrice {
-				status.CurrentPrice = minPrice
+			if newPrice < minPrice {
+				newPrice = minPrice
 			}
 		}
 	}
-	r.db.Save(&status)
+	r.db.Model(&status).Updates(map[string]interface{}{
+		"sell_volume24h": gorm.Expr("sell_volume24h + ?", quantity),
+		"current_price":  newPrice,
+	})
 }

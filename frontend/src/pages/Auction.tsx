@@ -2,11 +2,13 @@ import { useState, useEffect, useCallback } from 'react'
 import { api } from '../services/api'
 import { ws } from '../services/websocket'
 import { useToast } from '../components/Toast'
+import { useUser } from '../contexts/UserContext'
 import type { Auction as AuctionType, InventoryItem } from '../types'
 import './Auction.css'
 
 export default function Auction() {
   const { showToast } = useToast()
+  const { refreshProfile } = useUser()
   const [auctions, setAuctions] = useState<AuctionType[]>([])
   const [myAuctions, setMyAuctions] = useState<{ selling: AuctionType[], bidding: AuctionType[] }>({ selling: [], bidding: [] })
   const [tab, setTab] = useState<'market' | 'my' | 'create'>('market')
@@ -114,6 +116,7 @@ export default function Auction() {
       await api.placeBid(auctionId, price)
       showToast('出价成功', 'success')
       loadAuctions()
+      refreshProfile()
       setBidPrice({ ...bidPrice, [auctionId]: '' })
     } catch (e) {
       showToast((e as Error).message, 'error')
@@ -125,6 +128,7 @@ export default function Auction() {
       await api.buyoutAuction(auctionId)
       showToast('购买成功', 'success')
       loadAuctions()
+      refreshProfile()
     } catch (e) {
       showToast((e as Error).message, 'error')
     }

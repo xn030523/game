@@ -3,6 +3,10 @@ package repository
 import (
 	"farm-game/config"
 	"farm-game/models"
+	"farm-game/utils"
+	"fmt"
+	"sync"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -12,62 +16,106 @@ type FarmRepository struct {
 	db *gorm.DB
 }
 
+var (
+	farmRepoInstance *FarmRepository
+	farmRepoOnce     sync.Once
+)
+
 func NewFarmRepository() *FarmRepository {
-	return &FarmRepository{db: config.GetDB()}
+	farmRepoOnce.Do(func() {
+		farmRepoInstance = &FarmRepository{db: config.GetDB()}
+	})
+	return farmRepoInstance
 }
 
 // === 种子相关 ===
 
-// GetAllSeeds 获取所有种子
+// GetAllSeeds 获取所有种子（带缓存）
 func (r *FarmRepository) GetAllSeeds() ([]models.Seed, error) {
+	cacheKey := "seeds:all"
+	if cached, ok := utils.GlobalCache.Get(cacheKey); ok {
+		return cached.([]models.Seed), nil
+	}
 	var seeds []models.Seed
 	err := r.db.Where("is_active = ?", true).Order("unlock_level ASC").Find(&seeds).Error
+	if err == nil {
+		utils.GlobalCache.Set(cacheKey, seeds, 5*time.Minute)
+	}
 	return seeds, err
 }
 
-// GetSeedByID 根据ID获取种子
+// GetSeedByID 根据ID获取种子（带缓存）
 func (r *FarmRepository) GetSeedByID(id uint) (*models.Seed, error) {
+	cacheKey := fmt.Sprintf("seed:%d", id)
+	if cached, ok := utils.GlobalCache.Get(cacheKey); ok {
+		return cached.(*models.Seed), nil
+	}
 	var seed models.Seed
 	err := r.db.First(&seed, id).Error
 	if err != nil {
 		return nil, err
 	}
+	utils.GlobalCache.Set(cacheKey, &seed, 5*time.Minute)
 	return &seed, nil
 }
 
-// GetSeedsByLevel 获取指定等级可解锁的种子
+// GetSeedsByLevel 获取指定等级可解锁的种子（带缓存）
 func (r *FarmRepository) GetSeedsByLevel(level int) ([]models.Seed, error) {
+	cacheKey := fmt.Sprintf("seeds:level:%d", level)
+	if cached, ok := utils.GlobalCache.Get(cacheKey); ok {
+		return cached.([]models.Seed), nil
+	}
 	var seeds []models.Seed
 	err := r.db.Where("is_active = ? AND unlock_level <= ?", true, level).Find(&seeds).Error
+	if err == nil {
+		utils.GlobalCache.Set(cacheKey, seeds, 5*time.Minute)
+	}
 	return seeds, err
 }
 
 // === 作物相关 ===
 
-// GetAllCrops 获取所有作物
+// GetAllCrops 获取所有作物（带缓存）
 func (r *FarmRepository) GetAllCrops() ([]models.Crop, error) {
+	cacheKey := "crops:all"
+	if cached, ok := utils.GlobalCache.Get(cacheKey); ok {
+		return cached.([]models.Crop), nil
+	}
 	var crops []models.Crop
 	err := r.db.Preload("Seed").Find(&crops).Error
+	if err == nil {
+		utils.GlobalCache.Set(cacheKey, crops, 5*time.Minute)
+	}
 	return crops, err
 }
 
-// GetCropByID 根据ID获取作物
+// GetCropByID 根据ID获取作物（带缓存）
 func (r *FarmRepository) GetCropByID(id uint) (*models.Crop, error) {
+	cacheKey := fmt.Sprintf("crop:%d", id)
+	if cached, ok := utils.GlobalCache.Get(cacheKey); ok {
+		return cached.(*models.Crop), nil
+	}
 	var crop models.Crop
 	err := r.db.Preload("Seed").First(&crop, id).Error
 	if err != nil {
 		return nil, err
 	}
+	utils.GlobalCache.Set(cacheKey, &crop, 5*time.Minute)
 	return &crop, nil
 }
 
-// GetCropBySeedID 根据种子ID获取作物
+// GetCropBySeedID 根据种子ID获取作物（带缓存）
 func (r *FarmRepository) GetCropBySeedID(seedID uint) (*models.Crop, error) {
+	cacheKey := fmt.Sprintf("crop:seed:%d", seedID)
+	if cached, ok := utils.GlobalCache.Get(cacheKey); ok {
+		return cached.(*models.Crop), nil
+	}
 	var crop models.Crop
 	err := r.db.Where("seed_id = ?", seedID).First(&crop).Error
 	if err != nil {
 		return nil, err
 	}
+	utils.GlobalCache.Set(cacheKey, &crop, 5*time.Minute)
 	return &crop, nil
 }
 

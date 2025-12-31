@@ -3,25 +3,43 @@ package repository
 import (
 	"farm-game/config"
 	"farm-game/models"
+	"farm-game/utils"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type AchievementRepository struct {
 	db *gorm.DB
 }
 
+var (
+	achievementRepoInstance *AchievementRepository
+	achievementRepoOnce     sync.Once
+)
+
 func NewAchievementRepository() *AchievementRepository {
-	return &AchievementRepository{db: config.GetDB()}
+	achievementRepoOnce.Do(func() {
+		achievementRepoInstance = &AchievementRepository{db: config.GetDB()}
+	})
+	return achievementRepoInstance
 }
 
 // === 成就定义 ===
 
-// GetAllAchievements 获取所有成就
+// GetAllAchievements 获取所有成就（带缓存）
 func (r *AchievementRepository) GetAllAchievements() ([]models.Achievement, error) {
+	cacheKey := "achievements:all"
+	if cached, ok := utils.GlobalCache.Get(cacheKey); ok {
+		return cached.([]models.Achievement), nil
+	}
 	var achievements []models.Achievement
 	err := r.db.Order("category, sort_order").Find(&achievements).Error
+	if err == nil {
+		utils.GlobalCache.Set(cacheKey, achievements, 10*time.Minute)
+	}
 	return achievements, err
 }
 
@@ -76,7 +94,7 @@ func (r *AchievementRepository) GetUserAchievement(userID uint, code string) (*m
 // GetUserAchievementByID 获取用户指定成就(通过ID)
 func (r *AchievementRepository) GetUserAchievementByID(userID, achievementID uint) (*models.UserAchievement, error) {
 	var ua models.UserAchievement
-	err := r.db.Where("user_id = ? AND achievement_id = ?", userID, achievementID).
+	err := r.db.Session(&gorm.Session{Logger: logger.Discard}).Where("user_id = ? AND achievement_id = ?", userID, achievementID).
 		Preload("Achievement").First(&ua).Error
 	if err != nil {
 		return nil, err
@@ -177,7 +195,7 @@ func (r *AchievementRepository) GetUnreadMailCount(userID uint) (int64, error) {
 func (r *AchievementRepository) GetTodayCheckin(userID uint) (*models.DailyCheckin, error) {
 	var checkin models.DailyCheckin
 	today := time.Now().Format("2006-01-02")
-	err := r.db.Where("user_id = ? AND checkin_date = ?", userID, today).First(&checkin).Error
+	err := r.db.Session(&gorm.Session{Logger: logger.Discard}).Where("user_id = ? AND checkin_date = ?", userID, today).First(&checkin).Error
 	if err != nil {
 		return nil, err
 	}

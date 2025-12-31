@@ -26,7 +26,7 @@ function GameContent() {
 
   return (
     <>
-      <TopBar onMenuClick={setActiveModal} />
+      <TopBar key={user?.gold} onMenuClick={setActiveModal} />
       <Game onOpenMarket={() => setActiveModal('market')} />
       <Chat />
       

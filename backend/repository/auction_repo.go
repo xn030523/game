@@ -3,6 +3,7 @@ package repository
 import (
 	"farm-game/config"
 	"farm-game/models"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -12,8 +13,16 @@ type AuctionRepository struct {
 	db *gorm.DB
 }
 
+var (
+	auctionRepoInstance *AuctionRepository
+	auctionRepoOnce     sync.Once
+)
+
 func NewAuctionRepository() *AuctionRepository {
-	return &AuctionRepository{db: config.GetDB()}
+	auctionRepoOnce.Do(func() {
+		auctionRepoInstance = &AuctionRepository{db: config.GetDB()}
+	})
+	return auctionRepoInstance
 }
 
 // GetActiveAuctions 获取进行中的拍卖

@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Modal from './Modal'
 import { useUser } from '../contexts/UserContext'
 import { useToast } from './Toast'
 import { api } from '../services/api'
 import { ws } from '../services/websocket'
+import { dataCache } from '../stores/dataCache'
 import type { Seed, Crop } from '../types'
 
 interface MarketProps {
@@ -59,15 +60,20 @@ export default function Market({ isOpen, onClose }: MarketProps) {
     }
   }, [])
 
+  const dataLoaded = useRef(false)
+
   useEffect(() => {
     if (isOpen) {
-      setLoading(true)
-      Promise.all([api.getSeeds(), api.getCrops()])
-        .then(([seedsData, cropsData]) => {
-          setSeeds(seedsData.seeds)
-          setCrops(cropsData.crops)
-        })
-        .finally(() => setLoading(false))
+      if (!dataLoaded.current) {
+        setLoading(true)
+        Promise.all([dataCache.getSeeds(), dataCache.getCrops()])
+          .then(([seedsData, cropsData]) => {
+            setSeeds(seedsData)
+            setCrops(cropsData)
+            dataLoaded.current = true
+          })
+          .finally(() => setLoading(false))
+      }
       refreshInventory()
     }
   }, [isOpen, refreshInventory])

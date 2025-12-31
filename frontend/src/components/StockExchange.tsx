@@ -36,6 +36,7 @@ export default function StockExchange({ isOpen, onClose }: StockExchangeProps) {
   const chartRef = useRef<IChartApi | null>(null)
   const candleSeriesRef = useRef<ReturnType<IChartApi['addCandlestickSeries']> | null>(null)
   const todayCandleRef = useRef<{ open: number; high: number; low: number; close: number } | null>(null)
+  const lastKlineUpdateRef = useRef<number>(0) // K线更新节流
 
   useEffect(() => {
     if (isOpen) {
@@ -80,12 +81,25 @@ export default function StockExchange({ isOpen, onClose }: StockExchangeProps) {
         const profit = priceDiff * p.shares
         return { ...p, unrealized_profit: profit }
       }))
-      // 实时更新 K 线图最新蜡烛
-      if (selectedStock && data.stock_id === selectedStock.id && candleSeriesRef.current) {
+      // 实时更新 K 线图最新蜡烛（使用后端传来的完整 OHLC 数据，节流500ms）
+      const now = Date.now()
+      if (selectedStock && data.stock_id === selectedStock.id && candleSeriesRef.current && now - lastKlineUpdateRef.current > 500) {
+        lastKlineUpdateRef.current = now
         const today = new Date().toISOString().split('T')[0] as Time
         const price = data.current_price as number
+        const openPrice = data.open_price as number | undefined
+        const highPrice = data.high_price as number | undefined
+        const lowPrice = data.low_price as number | undefined
         
-        if (!todayCandleRef.current) {
+        // 优先使用后端传来的 OHLC，否则用本地维护的
+        if (openPrice !== undefined) {
+          todayCandleRef.current = {
+            open: openPrice,
+            high: highPrice || price,
+            low: lowPrice || price,
+            close: price
+          }
+        } else if (!todayCandleRef.current) {
           todayCandleRef.current = { open: price, high: price, low: price, close: price }
         } else {
           todayCandleRef.current.close = price
@@ -168,16 +182,18 @@ export default function StockExchange({ isOpen, onClose }: StockExchangeProps) {
     }
   }, [selectedStock])
 
-  // 渲染 K 线图
+  // 渲染 K 线图（当有数据时创建并填充）
   useEffect(() => {
-    if (!chartContainerRef.current || klineData.length === 0) return
+    if (!chartContainerRef.current || !selectedStock || klineData.length === 0) return
 
     // 清理旧图表
     if (chartRef.current) {
       chartRef.current.remove()
       chartRef.current = null
+      candleSeriesRef.current = null
     }
 
+    // 创建图表
     try {
       const chart = createChart(chartContainerRef.current, {
         width: 350,
@@ -198,6 +214,7 @@ export default function StockExchange({ isOpen, onClose }: StockExchangeProps) {
       })
       candleSeriesRef.current = candlestickSeries
 
+      // 立即填充数据
       const chartData: CandlestickData<Time>[] = klineData
         .slice()
         .filter(k => k.price > 0)
@@ -215,7 +232,7 @@ export default function StockExchange({ isOpen, onClose }: StockExchangeProps) {
         chart.timeScale().fitContent()
       }
     } catch (e) {
-      console.error('K线图渲染失败:', e)
+      console.error('K线图创建失败:', e)
     }
 
     return () => {
@@ -225,7 +242,18 @@ export default function StockExchange({ isOpen, onClose }: StockExchangeProps) {
         candleSeriesRef.current = null
       }
     }
-  }, [klineData])
+  }, [selectedStock, klineData])
+
+  // 清理图表实例
+  useEffect(() => {
+    return () => {
+      if (chartRef.current) {
+        chartRef.current.remove()
+        chartRef.current = null
+        candleSeriesRef.current = null
+      }
+    }
+  }, [])
 
   const loadData = async () => {
     setLoading(true)

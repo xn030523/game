@@ -3,16 +3,26 @@ package repository
 import (
 	"farm-game/config"
 	"farm-game/models"
+	"sync"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type SocialRepository struct {
 	db *gorm.DB
 }
 
+var (
+	socialRepoInstance *SocialRepository
+	socialRepoOnce     sync.Once
+)
+
 func NewSocialRepository() *SocialRepository {
-	return &SocialRepository{db: config.GetDB()}
+	socialRepoOnce.Do(func() {
+		socialRepoInstance = &SocialRepository{db: config.GetDB()}
+	})
+	return socialRepoInstance
 }
 
 // === 好友关系 ===
@@ -20,7 +30,7 @@ func NewSocialRepository() *SocialRepository {
 // GetFriendship 获取好友关系
 func (r *SocialRepository) GetFriendship(userID, friendID uint) (*models.Friendship, error) {
 	var friendship models.Friendship
-	err := r.db.Where("(user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)",
+	err := r.db.Session(&gorm.Session{Logger: logger.Discard}).Where("(user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)",
 		userID, friendID, friendID, userID).First(&friendship).Error
 	if err != nil {
 		return nil, err

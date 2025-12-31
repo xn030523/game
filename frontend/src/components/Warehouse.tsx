@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Modal from './Modal'
 import { useUser } from '../contexts/UserContext'
 import { useToast } from './Toast'
 import { api } from '../services/api'
+import { dataCache } from '../stores/dataCache'
 import type { Seed } from '../types'
 
 interface WarehouseProps {
@@ -17,9 +18,14 @@ export default function Warehouse({ isOpen, onClose }: WarehouseProps) {
   const [seeds, setSeeds] = useState<Seed[]>([])
   const [selling, setSelling] = useState<number | null>(null)
 
+  const dataLoaded = useRef(false)
+
   useEffect(() => {
-    if (isOpen) {
-      api.getSeeds().then(data => setSeeds(data.seeds))
+    if (isOpen && !dataLoaded.current) {
+      dataCache.getSeeds().then(data => {
+        setSeeds(data)
+        dataLoaded.current = true
+      })
     }
   }, [isOpen])
 

@@ -3,6 +3,9 @@ package repository
 import (
 	"farm-game/config"
 	"farm-game/models"
+	"farm-game/utils"
+	"fmt"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -13,27 +16,53 @@ type StockRepository struct {
 	db *gorm.DB
 }
 
+var (
+	stockRepoInstance *StockRepository
+	stockRepoOnce     sync.Once
+)
+
 func NewStockRepository() *StockRepository {
-	return &StockRepository{db: config.GetDB()}
+	stockRepoOnce.Do(func() {
+		stockRepoInstance = &StockRepository{db: config.GetDB()}
+	})
+	return stockRepoInstance
 }
 
 // === 股票相关 ===
 
-// GetAllStocks 获取所有股票
+// GetAllStocks 获取所有股票（带缓存）
 func (r *StockRepository) GetAllStocks() ([]models.Stock, error) {
+	cacheKey := "stocks:all"
+	if cached, ok := utils.GlobalCache.Get(cacheKey); ok {
+		return cached.([]models.Stock), nil
+	}
 	var stocks []models.Stock
 	err := r.db.Where("is_active = ?", true).Find(&stocks).Error
+	if err == nil {
+		utils.GlobalCache.Set(cacheKey, stocks, 10*time.Second)
+	}
 	return stocks, err
 }
 
-// GetStockByID 根据ID获取股票
+// GetStockByID 根据ID获取股票（带缓存）
 func (r *StockRepository) GetStockByID(id uint) (*models.Stock, error) {
+	cacheKey := fmt.Sprintf("stock:%d", id)
+	if cached, ok := utils.GlobalCache.Get(cacheKey); ok {
+		return cached.(*models.Stock), nil
+	}
 	var stock models.Stock
 	err := r.db.First(&stock, id).Error
 	if err != nil {
 		return nil, err
 	}
+	utils.GlobalCache.Set(cacheKey, &stock, 10*time.Second)
 	return &stock, nil
+}
+
+// InvalidateStockCache 清除股票缓存
+func (r *StockRepository) InvalidateStockCache(id uint) {
+	utils.GlobalCache.Delete(fmt.Sprintf("stock:%d", id))
+	utils.GlobalCache.Delete("stocks:all")
 }
 
 // GetStockByCode 根据代码获取股票
@@ -48,6 +77,7 @@ func (r *StockRepository) GetStockByCode(code string) (*models.Stock, error) {
 
 // UpdateStock 更新股票
 func (r *StockRepository) UpdateStock(stock *models.Stock) error {
+	r.InvalidateStockCache(stock.ID)
 	return r.db.Save(stock).Error
 }
 

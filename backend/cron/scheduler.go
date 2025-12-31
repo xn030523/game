@@ -58,23 +58,23 @@ func registerTasks() {
 	// 排行榜更新 - 每10分钟
 	scheduler.Register("ranking_update", 10*time.Minute, UpdateRankings)
 
-	// 股票强平检查 - 每30秒
-	scheduler.Register("liquidation_check", 30*time.Second, CheckLiquidations)
+	// 股票强平检查 - 每1分钟（降低频率减少数据库压力）
+	scheduler.Register("liquidation_check", 1*time.Minute, CheckLiquidations)
 
-	// 股票实时波动 - 每3秒
-	scheduler.Register("stock_tick", 3*time.Second, StockTick)
+	// 股票实时波动 - 每秒1次
+	scheduler.Register("stock_tick", 1*time.Second, StockTick)
 
-	// 股票随机新闻事件 - 每1分钟
-	scheduler.Register("stock_news", 1*time.Minute, StockNewsEvent)
+	// 股票随机新闻事件 - 每2分钟
+	scheduler.Register("stock_news", 2*time.Minute, StockNewsEvent)
 
 	// 股息分红 - 每10分钟
 	scheduler.Register("stock_dividend", 10*time.Minute, StockDividend)
 
-	// 内幕消息 - 每3分钟
-	scheduler.Register("insider_tip", 3*time.Minute, InsiderTip)
+	// 内幕消息 - 每5分钟（降低频率）
+	scheduler.Register("insider_tip", 5*time.Minute, InsiderTip)
 
-	// 作物成熟检查 - 每1分钟
-	scheduler.Register("crop_mature_check", 1*time.Minute, CheckCropMature)
+	// 作物成熟检查 - 每30秒（提高响应速度）
+	scheduler.Register("crop_mature_check", 30*time.Second, CheckCropMature)
 
 	// 清理过期数据 - 每1小时
 	scheduler.Register("cleanup_expired", 1*time.Hour, CleanupExpiredData)
@@ -93,7 +93,7 @@ func (s *Scheduler) Register(name string, interval time.Duration, handler func()
 // run 运行调度器
 func (s *Scheduler) run() {
 	s.running = true
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(100 * time.Millisecond) // 100毫秒检查一次，支持高频任务
 	defer ticker.Stop()
 
 	for {
